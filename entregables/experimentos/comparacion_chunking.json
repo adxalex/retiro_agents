@@ -1,0 +1,54 @@
+{
+  "experiment": "chunking_configuration_comparison",
+  "input_documents": 1,
+  "configurations_compared": 2,
+  "results": [
+    {
+      "configuration": {
+        "chunk_size": 500,
+        "chunk_overlap": 50
+      },
+      "total_chunks": 21,
+      "unique_chunk_ids": 21,
+      "duplicate_chunk_ids": 0,
+      "exact_repeated_texts": 0,
+      "length_characters": {
+        "minimum": 160,
+        "mean": 398.9,
+        "median": 450,
+        "p95": 483.0,
+        "maximum": 491
+      },
+      "chunks_by_document": {
+        "flora_fauna__resumen_inventario_arbolado_retiro__madrid__v01": 21
+      },
+      "chunks_by_category": {
+        "flora_fauna": 21
+      }
+    },
+    {
+      "configuration": {
+        "chunk_size": 800,
+        "chunk_overlap": 100
+      },
+      "total_chunks": 13,
+      "unique_chunk_ids": 13,
+      "duplicate_chunk_ids": 0,
+      "exact_repeated_texts": 0,
+      "length_characters": {
+        "minimum": 425,
+        "mean": 667.38,
+        "median": 723,
+        "p95": 777.0,
+        "maximum": 777
+      },
+      "chunks_by_document": {
+        "flora_fauna__resumen_inventario_arbolado_retiro__madrid__v01": 13
+      },
+      "chunks_by_category": {
+        "flora_fauna": 13
+      }
+    }
+  ],
+  "interpretation": "Estas métricas describen la segmentación. La configuración final debe decidirse también mediante pruebas de retrieval."
+}

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+chroma/
+chroma_retiro_madrid.zip
+output/
+.DS_Store
+*.egg-info/
+# Checkpoints locales de embeddings.
+.cache/
+
+probar_cli.py

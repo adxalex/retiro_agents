@@ -1,0 +1,25 @@
+[
+  {
+    "document_id": "flora_fauna__senda_botanica__madrid__v01",
+    "text": "La senda botánica de El Retiro permite conocer diferentes especies vegetales. El recorrido incluye árboles singulares y elementos de interés histórico.",
+    "source": "flora_fauna__senda_botanica__madrid__v01.pdf",
+    "category": "flora_fauna",
+    "corpus_group": "flora_fauna_arte_cultura_actividades",
+    "page": 1
+  },
+  {
+    "document_id": "flora_fauna__senda_botanica__madrid__v01",
+    "text": "La segunda parte del recorrido explica las características de los árboles y su relación con el paisaje del parque.",
+    "source": "flora_fauna__senda_botanica__madrid__v01.pdf",
+    "category": "flora_fauna",
+    "corpus_group": "flora_fauna_arte_cultura_actividades",
+    "page": 2
+  },
+  {
+    "document_id": "arte_cultura__retiro_paisaje_luz__fuentes__v01",
+    "text": "El parque de El Retiro forma parte del Paisaje de la Luz y mantiene una relación histórica con el Paseo del Prado y las instituciones culturales de su entorno.",
+    "source": "arte_cultura__retiro_paisaje_luz__fuentes__v01.md",
+    "category": "arte_cultura",
+    "corpus_group": "flora_fauna_arte_cultura_actividades"
+  }
+]
