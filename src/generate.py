@@ -21,30 +21,16 @@ gemini-embedding-001.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
-from config import LLM_MODEL, TOP_K
+from config import LLM_MODEL, MENSAJE_ABSTENCION, SCORE_MINIMO, TOP_K
+
 from src.gemini_auth import get_gemini_client
 from src.fuentes import describir_citas
 from src.logging_utils import Cronometro, log_query
 from src.retrieve import retrieve
 
 CENTINELA_SIN_EVIDENCIA = "SIN_EVIDENCIA"
-
-# Texto fijo en espanol. Si el banco de preguntas crece en otros idiomas,
-# convendria traducirlo segun el idioma detectado en la consulta.
-MENSAJE_ABSTENCION = (
-    "No he encontrado esa informacion en los documentos del Parque del Retiro "
-    "que tengo disponibles. Puedes consultarlo en la web municipal "
-    "(madrid.es) o en esmadrid.com."
-)
-
-# Sin calibrar todavia. 0.0 significa que la compuerta de score no descarta nada
-# y la abstencion recae en el centinela del prompt: es preferible a inventarse un
-# umbral que silencie respuestas correctas. Calibrarlo con
-# scripts/validation/calibrar_umbral.py sobre el indice real y fijarlo en .env.
-SCORE_MINIMO = float(os.getenv("RAG_SCORE_MINIMO", "0.0"))
 
 INSTRUCCIONES = f"""Eres el asistente del Parque de El Retiro de Madrid. Hablas con un visitante.
 

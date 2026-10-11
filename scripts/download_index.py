@@ -4,24 +4,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import os
 import shutil
 import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
 
-from config import CHROMA_DIR
-
-INDEX_URL = os.getenv(
-    "RETIRO_INDEX_URL",
-    "https://github.com/adxalex/retiro_rag/releases/download/"
-    "index-v1/chroma_retiro_madrid.zip"
-)
-
-# Sustituir por el SHA-256 real de chroma_retiro_madrid.zip.
-INDEX_SHA256 = "176c11459f4d681da77b92b5b62daabefb85c628d612d19da099755f2143a882"
-
+from config import CHROMA_DIR, INDEX_SHA256, INDEX_URL
 
 def calcular_sha256(path: Path) -> str:
     digest = hashlib.sha256()

@@ -19,13 +19,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-RUTA_LOG = Path(os.getenv("RAG_LOG_FILE", "output/consultas.jsonl"))
+from config import LOG_FILE
+
+RUTA_LOG = Path(LOG_FILE)
 
 _logger = logging.getLogger("retiro_rag")
 if not _logger.handlers:

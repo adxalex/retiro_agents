@@ -28,36 +28,28 @@ from typing import Any
 
 import requests
 
-ESTACION_RETIRO = "3195"
-URL_AEMET = (
-    "https://opendata.aemet.es/opendata/api/observacion/convencional/datos/estacion/"
+from config import (
+    AVISO_NO_OFICIAL,
+    ESTACION_RETIRO,
+    HORA_APERTURA,
+    HORA_CIERRE_INVIERNO,
+    HORA_CIERRE_VERANO,
+    MESES_VERANO,
+    TIEMPO_MAXIMO,
+    URL_AEMET,
+    VIENTO_NARANJA_KMH,
+    VIENTO_ROJA_KMH,
+    ZONA_HORARIA,
 )
-TIEMPO_MAXIMO = 8  # segundos
 
-# Umbrales del protocolo del Retiro 2026 (ver corpus: seguridad_protocolo_alertas).
-VIENTO_NARANJA_KMH = 45.0
-VIENTO_ROJA_KMH = 60.0
-
-# Horario del parque (ver corpus: informacion_practica_guia_visitante).
-HORA_APERTURA = 6
-HORA_CIERRE_INVIERNO = 22  # octubre a marzo
-HORA_CIERRE_VERANO = 24  # abril a septiembre
-MESES_VERANO = range(4, 10)
-
-# El horario del parque es hora local de Madrid. Si el servidor corre en UTC,
-# datetime.now() daria una hora equivocada y el aviso de apertura o cierre
-# seria incorrecto, asi que la zona horaria se fija explicitamente.
-ZONA_MADRID = ZoneInfo("Europe/Madrid")
+# Zona fija: si el servidor corre en UTC, datetime.now() daría una hora
+# equivocada y el aviso de apertura o cierre sería incorrecto.
+ZONA_MADRID = ZoneInfo(ZONA_HORARIA)
 
 
 def ahora_en_madrid() -> datetime:
     """Hora actual en el parque, independiente de la zona del servidor."""
     return datetime.now(ZONA_MADRID)
-
-AVISO_NO_OFICIAL = (
-    "Comparación orientativa con los umbrales del protocolo. El estado oficial "
-    "del parque se publica en los paneles de los accesos y en @MADRID."
-)
 
 
 def _saludo_por_hora(hora: int) -> str:
