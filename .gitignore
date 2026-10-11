@@ -9,5 +9,6 @@ output/
 *.egg-info/
 # Checkpoints locales de embeddings.
 .cache/
-
+guia_arranque_equipo.md
+briefing_pb2_sdd_v2.md
 probar_cli.py
