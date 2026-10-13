@@ -21,7 +21,7 @@ def _renderizar_banner_clima() -> None:
     """Banner opcional con el clima en vivo del Retiro (AEMET).
 
     No forma parte del RAG: no entra al contexto del LLM ni a las citas.
-    Si el modulo de David todavia no esta integrado, no se muestra nada.
+    # Si el módulo de contexto no está integrado, no se muestra nada.
     """
     try:
         from src.contexto_visita import saludo_contextual
