@@ -167,3 +167,4 @@ Prioridad: **Bloquea al agente** (hay que resolverlo antes o durante la integrac
 - [NECESITA ACLARACIÓN: ¿qué valor de `RAG_SCORE_MINIMO` se adopta, y se calibra antes o después de integrar el agente?]
 - [NECESITA ACLARACIÓN: ¿qué fallback local se espera para AEMET (última observación en caché, mensaje fijo…) para cumplir P7?]
 - [NECESITA ACLARACIÓN: ¿se unifica el comportamiento por defecto de `--index` y `scripts.index_corpus`?]
+
