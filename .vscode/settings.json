@@ -1,0 +1,14 @@
+{
+  // Copilot lee AGENTS.md y .github/copilot-instructions.md como contexto fijo
+  "chat.useAgentsMdFile": true,
+  "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+  // Activa los comandos /sdd-* de .github/prompts
+  "chat.promptFiles": true,
+  // Material docente y artefactos generados fuera de las búsquedas del agente
+  "search.exclude": {
+    "Profes/**": true,
+    "output/**": true
+  },
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests"]
+}
