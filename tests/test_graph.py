@@ -51,3 +51,59 @@ def test_estado_inicializa_contador_por_especialista():
     campos = get_type_hints(EstadoGrafo, include_extras=True)
 
     assert "pasos_especialista" in campos
+
+def test_aplicar_marca_done_true_con_plan_aprobado():
+    from src.state import EstadoGrafo
+
+    grafo = build_graph()
+
+    estado = {
+        "pedido": "Quiero visitar el Retiro",
+        "plan": ["Visitar el Palacio de Cristal"],
+        "aprobado": True,
+        "comentario_aprobacion": "",
+        "traza": [],
+        "done": False,
+    }
+
+    resultado = grafo.nodes["aplicar"].invoke(estado)
+
+    assert resultado["done"] is True
+
+
+def test_aplicar_no_completa_un_plan_rechazado():
+    grafo = build_graph()
+
+    estado = {
+        "pedido": "Quiero visitar el Retiro",
+        "plan": ["Visitar el Palacio de Cristal"],
+        "aprobado": False,
+        "comentario_aprobacion": "Prefiero otra ruta",
+        "traza": [],
+        "done": False,
+    }
+
+    resultado = grafo.nodes["aplicar"].invoke(estado)
+
+    assert resultado["done"] is False
+    assert resultado["plan"] == []
+    assert resultado["pedido"] == ""
+    assert resultado["aprobado"] is None
+
+
+def test_aplicar_no_completa_sin_aprobacion_explicita():
+    grafo = build_graph()
+
+    estado = {
+        "pedido": "Quiero visitar el Retiro",
+        "plan": ["Visitar el Palacio de Cristal"],
+        "aprobado": None,
+        "comentario_aprobacion": "",
+        "traza": [],
+        "done": False,
+    }
+
+    resultado = grafo.nodes["aplicar"].invoke(estado)
+
+    assert resultado["done"] is False
+    assert resultado["traza"][-1]["status"] == "blocked"

@@ -1,4 +1,3 @@
-
 """Grafo de ejecución del agente del Parque del Retiro."""
 
 from datetime import datetime
@@ -404,35 +403,134 @@ def build_graph(tool_runner: Callable | None = None):
             "traza": estado.get("traza", []) + eventos,
         }
 
+    
+    
+    
     def sintetizar(estado: EstadoGrafo) -> dict:
-        """Combina las notas y prepara la respuesta y el plan."""
+        """Integra los resultados y prepara una propuesta para HITL."""
         notas = estado.get("notas", {})
-        partes = []
+        normas = (notas.get("normas") or "").strip()
+        entorno = (notas.get("entorno") or "").strip()
 
-        if notas.get("normas"):
-            partes.append(
-                "Conocimiento del Retiro:\n" + notas["normas"]
+        secciones = []
+        limitaciones = []
+        plan = []
+
+        # Información documental.
+        normas_lower = normas.lower()
+        normas_utiles = bool(normas) and not any(
+            texto in normas_lower
+            for texto in (
+                "no se pudo consultar",
+                "no se ha confirmado información del rag",
+                "no ha podido confirmar la respuesta",
+            )
+        )
+
+        if normas:
+            secciones.append(
+                "**Información sobre el Parque del Retiro**\n" + normas
             )
 
-        if notas.get("entorno"):
-            partes.append(
-                "Planificación y contexto de visita:\n"
-                + notas["entorno"]
+        if normas and not normas_utiles:
+            limitaciones.append(
+                "La información documental no se ha podido verificar."
             )
 
-        respuesta = "\n\n".join(partes)
+        # Contexto temporal, información externa e imagen.
+        entorno_lower = entorno.lower()
+        entorno_util = bool(entorno) and not all(
+            frase in entorno_lower
+            for frase in (
+                "no se pudo obtener la hora",
+                "no se pudo obtener información externa",
+                "no se pudo describir la imagen",
+            )
+        )
 
-        if not respuesta:
+        if entorno:
+            secciones.append(
+                "**Contexto de la visita**\n" + entorno
+            )
+
+        if any(
+            frase in entorno_lower
+            for frase in (
+                "no se pudo obtener",
+                "no se pudo describir",
+                "error:",
+            )
+        ):
+            limitaciones.append(
+                "Una o varias herramientas no han devuelto información fiable."
+            )
+
+        # Si ya existen pasos estructurados, los conservamos.
+        # No extraemos como acciones las líneas descriptivas de las tools.
+        for linea in entorno.splitlines():
+            texto = linea.strip()
+            paso = ""
+
+            if texto.startswith(("- ", "• ", "* ")):
+                paso = texto[2:].strip()
+            elif (
+                len(texto) >= 3
+                and texto[0].isdigit()
+                and texto[1:3] in (". ", ") ")
+            ):
+                paso = texto[3:].strip()
+
+            if paso and paso not in plan:
+                plan.append(paso)
+
+        # Si los especialistas han aportado información utilizable, pero
+        # todavía no han construido un itinerario, proponemos acciones
+        # de revisión basadas en las fuentes disponibles. No inventamos
+        # nombres de lugares, horarios ni condiciones del parque.
+        if not plan and (normas_utiles or entorno_util):
+            if normas_utiles:
+                plan.append(
+                    "Revisar los lugares de interés identificados "
+                    "en la información documental disponible."
+                )
+
+            if entorno_util:
+                plan.append(
+                    "Revisar el contexto temporal y la información externa "
+                    "disponible antes de organizar la visita."
+                )
+
+        if secciones:
+            respuesta = "\n\n".join(secciones)
+        else:
             respuesta = (
-                "No he podido obtener información suficiente "
-                "para responder con garantías."
+                "No he podido obtener información suficiente para responder "
+                "con garantías. No voy a inventar datos sobre el parque."
+            )
+            limitaciones.append(
+                "Ninguno de los especialistas ha aportado información utilizable."
             )
 
-        plan = [
-            linea.strip()
-            for linea in respuesta.splitlines()
-            if linea.strip()
-        ]
+        if limitaciones:
+            respuesta += (
+                "\n\n**Limitaciones**\n"
+                + "\n".join(
+                    f"- {texto}"
+                    for texto in dict.fromkeys(limitaciones)
+                )
+            )
+
+        if plan:
+            respuesta += (
+                "\n\n**Propuesta pendiente de aprobación**\n"
+                + "\n".join(f"- {paso}" for paso in plan)
+                + "\n\nNo se aplicará hasta que la apruebes."
+            )
+        else:
+            respuesta += (
+                "\n\nNo se ha generado una propuesta aprobable porque "
+                "no hay información suficiente."
+            )
 
         return {
             "respuesta": respuesta,
@@ -442,22 +540,45 @@ def build_graph(tool_runner: Callable | None = None):
             "done": False,
         }
 
+
+
+
     def aplicar(estado: EstadoGrafo) -> dict:
-        """Procesa la decisión humana después de la pausa."""
+        """Finaliza el plan únicamente tras validarlo y recibir aprobación."""
         aprobado = estado.get("aprobado")
         comentario = (
             estado.get("comentario_aprobacion") or ""
         ).strip()
+        plan = estado.get("plan") or []
 
         if aprobado is True:
+            # No se puede completar un plan vacío.
+            if not plan:
+                evento = _evento(
+                    "hitl",
+                    "aplicar",
+                    {"comentario": comentario},
+                    "error",
+                    "No se puede completar un plan vacío.",
+                )
+                return {
+                    "done": False,
+                    "traza": estado.get("traza", []) + [evento],
+                }
+
+            # El plan aprobado se conserva como resultado final.
+            # En este proyecto, aplicar significa confirmar la
+            # propuesta de visita; no modifica sistemas externos.
             evento = _evento(
                 "hitl",
-                "aprobar",
-                {"comentario": comentario},
+                "aplicar",
+                {
+                    "comentario": comentario,
+                    "numero_pasos": len(plan),
+                },
                 "ok",
-                "El usuario ha aprobado el plan.",
+                "El plan de visita ha sido aprobado y confirmado.",
             )
-
             return {
                 "done": True,
                 "traza": estado.get("traza", []) + [evento],
@@ -471,7 +592,6 @@ def build_graph(tool_runner: Callable | None = None):
                 "ok",
                 "El usuario ha rechazado el plan.",
             )
-
             return {
                 "pedido": "",
                 "notas": {},
@@ -485,8 +605,19 @@ def build_graph(tool_runner: Callable | None = None):
                 "traza": estado.get("traza", []) + [evento],
             }
 
-        # Nunca completar un plan sin aprobación explícita.
-        return {"done": False}
+        # Sin aprobación explícita, nunca se completa el plan.
+        evento = _evento(
+            "hitl",
+            "aplicar",
+            {},
+            "blocked",
+            "No existe aprobación humana explícita.",
+        )
+        return {
+            "done": False,
+            "traza": estado.get("traza", []) + [evento],
+        }
+
 
     # Construcción del grafo.
     builder = StateGraph(EstadoGrafo)
