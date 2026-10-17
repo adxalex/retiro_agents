@@ -31,4 +31,7 @@ class EstadoGrafo(TypedDict):
     plan: list[str]
     aprobado: bool | None
     pasos: int
+    pasos_especialista: dict[str, int]
     traza: list[EventoTraza]
+    imagen: dict | None
+    comentario_aprobacion: str
