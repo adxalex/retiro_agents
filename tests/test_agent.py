@@ -8,7 +8,37 @@ import src.graph as graph_module
 
 
 def generador_simulado(prompt, contexto):
-    """Simula el resultado del LLM sin llamadas externas."""
+    """Simula las respuestas de los especialistas sin llamadas externas."""
+    prompt_lower = prompt.lower()
+    contexto_lower = contexto.lower()
+
+    es_planificacion = (
+        "planificación de visitas" in prompt_lower
+        or "planificacion de visitas" in prompt_lower
+    )
+
+    peticion_de_plan = any(
+        palabra in contexto_lower
+        for palabra in (
+            "organiza una visita",
+            "organizar una visita",
+            "planifica una visita",
+            "prepara un itinerario",
+            "prepara una ruta",
+        )
+    )
+
+    # Solo generamos acciones concretas cuando el usuario solicita
+    # organizar una visita. Las consultas informativas no crean planes.
+    if es_planificacion and peticion_de_plan:
+        return (
+            "- Consultar la información disponible sobre los lugares "
+            "de interés del parque.\n"
+            "- Tener en cuenta la hora y el contexto meteorológico "
+            "antes de organizar el recorrido."
+        )
+
+    # Para el resto de los casos, conservamos la información recibida.
     return contexto
 
 
@@ -22,7 +52,7 @@ def agente_pruebas(monkeypatch):
     def herramienta_simulada(nombre, args):
         if nombre == "rag_ask":
             data = {
-                "respuesta": "Respuesta documental simulada.",
+                "respuesta": "El parque cuenta con lugares de interés.",
                 "fuentes": ["documento_demo.pdf"],
                 "citas": [],
                 "abstuvo": False,
@@ -32,6 +62,11 @@ def agente_pruebas(monkeypatch):
             data = {
                 "hora_madrid": "12:00",
                 "estado_parque": "dato simulado",
+            }
+        elif nombre == "api_dominio":
+            data = {
+                "origen": "respaldo",
+                "observacion": "Información meteorológica simulada.",
             }
         else:
             data = {"resultado": "simulado"}
@@ -91,7 +126,7 @@ def test_procesar_turno_devuelve_contrato_publico(agente_pruebas):
     assert isinstance(resultado["traza"], list)
 
 
-def test_el_grafo_se_pausa_antes_de_aplicar(agente_pruebas):
+def test_consulta_informativa_no_requiere_aprobacion(agente_pruebas):
     thread_id = str(uuid4())
 
     resultado = agente_pruebas.procesar_turno(
@@ -99,6 +134,23 @@ def test_el_grafo_se_pausa_antes_de_aplicar(agente_pruebas):
         thread_id,
     )
 
+    assert resultado["error"] is None
+    assert resultado["pendiente_aprobacion"] is False
+    assert resultado["plan"] == []
+    assert resultado["done"] is False
+
+
+def test_el_grafo_se_pausa_antes_de_aplicar(agente_pruebas):
+    thread_id = str(uuid4())
+
+    resultado = agente_pruebas.procesar_turno(
+        "Organiza una visita por el Retiro teniendo en cuenta la hora "
+        "y la meteorología.",
+        thread_id,
+    )
+
+    assert resultado["error"] is None
+    assert resultado["plan"]
     assert resultado["pendiente_aprobacion"] is True
     assert resultado["done"] is False
 
@@ -113,7 +165,8 @@ def test_aprobar_plan_marca_done_como_true(agente_pruebas):
     thread_id = str(uuid4())
 
     agente_pruebas.procesar_turno(
-        "¿Qué lugares interesantes hay en el Retiro?",
+        "Organiza una visita por el Retiro teniendo en cuenta la hora "
+        "y la meteorología.",
         thread_id,
     )
 
@@ -128,7 +181,8 @@ def test_rechazar_plan_limpia_el_pedido(agente_pruebas):
     thread_id = str(uuid4())
 
     agente_pruebas.procesar_turno(
-        "¿Qué lugares interesantes hay en el Retiro?",
+        "Organiza una visita por el Retiro teniendo en cuenta la hora "
+        "y la meteorología.",
         thread_id,
     )
 
@@ -157,35 +211,39 @@ def test_se_puede_iniciar_otro_pedido_tras_rechazar(agente_pruebas):
     thread_id = str(uuid4())
 
     agente_pruebas.procesar_turno(
-        "¿Qué lugares interesantes hay en el Retiro?",
+        "Organiza una visita por el Retiro teniendo en cuenta la hora "
+        "y la meteorología.",
         thread_id,
     )
 
     agente_pruebas.aprobar_plan(thread_id, False)
 
     resultado = agente_pruebas.procesar_turno(
-        "Cuéntame la historia del parque",
+        "Organiza una visita por el Retiro teniendo en cuenta la hora "
+        "y la meteorología.",
         thread_id,
     )
 
     assert resultado["error"] is None
     assert resultado["pendiente_aprobacion"] is True
     assert resultado["done"] is False
+    assert resultado["plan"]
 
 
 def test_las_conversaciones_no_comparten_estado(agente_pruebas):
     thread_a = str(uuid4())
     thread_b = str(uuid4())
 
-    agente_pruebas.procesar_turno(
-        "¿Qué lugares interesantes hay en el Retiro?",
-        thread_a,
+    peticion = (
+        "Organiza una visita por el Retiro teniendo en cuenta la hora "
+        "y la meteorología."
     )
 
-    agente_pruebas.procesar_turno(
-        "¿Qué lugares interesantes hay en el Retiro?",
-        thread_b,
-    )
+    resultado_a = agente_pruebas.procesar_turno(peticion, thread_a)
+    resultado_b = agente_pruebas.procesar_turno(peticion, thread_b)
+
+    assert resultado_a["pendiente_aprobacion"] is True
+    assert resultado_b["pendiente_aprobacion"] is True
 
     agente_pruebas.aprobar_plan(thread_a, True)
 
@@ -251,15 +309,13 @@ def test_procesar_turno_rechaza_consultas_vacias(agente_pruebas):
 
 
 def test_supervisor_respeta_limite_de_iteraciones():
-    from src.graph import _ruta_fallback
-
     estado = {
         "pedido": "Quiero organizar una visita",
         "notas": {},
         "pasos": 6,
     }
 
-    assert _ruta_fallback(estado) == "sintetizar"
+    assert graph_module._ruta_fallback(estado) == "sintetizar"
 
 
 def test_historial_se_conserva_en_la_misma_conversacion(agente_pruebas):
@@ -269,8 +325,6 @@ def test_historial_se_conserva_en_la_misma_conversacion(agente_pruebas):
         "¿Qué lugares interesantes hay en el Retiro?",
         thread_id,
     )
-
-    agente_pruebas.aprobar_plan(thread_id, False)
 
     agente_pruebas.procesar_turno(
         "Cuéntame la historia del parque",

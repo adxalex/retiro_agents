@@ -566,9 +566,8 @@ def build_graph(
 
     
     
-    
     def sintetizar(estado: EstadoGrafo) -> dict:
-        """Integra los resultados y prepara una propuesta para HITL."""
+        """Combina las notas de los especialistas y prepara HITL si hay un plan válido."""
         notas = estado.get("notas", {})
         normas = (notas.get("normas") or "").strip()
         entorno = (notas.get("entorno") or "").strip()
@@ -577,90 +576,78 @@ def build_graph(
         limitaciones = []
         plan = []
 
-        # Información documental.
-        normas_lower = normas.lower()
-        normas_utiles = bool(normas) and not any(
-            texto in normas_lower
-            for texto in (
-                "no se pudo consultar",
-                "no se ha confirmado información del rag",
-                "no ha podido confirmar la respuesta",
-            )
-        )
-
+        # Especialista 1: conocimiento documentado del Retiro.
         if normas:
             secciones.append(
                 "**Información sobre el Parque del Retiro**\n" + normas
             )
 
-        if normas and not normas_utiles:
-            limitaciones.append(
-                "La información documental no se ha podido verificar."
-            )
+            normas_lower = normas.lower()
+            if any(
+                texto in normas_lower
+                for texto in (
+                    "no se pudo consultar",
+                    "no se ha confirmado información del rag",
+                    "no ha podido confirmar",
+                    "el sistema rag no ha podido confirmar",
+                    "error:",
+                )
+            ):
+                limitaciones.append(
+                    "La información documental no se ha podido verificar completamente."
+                )
 
-        # Contexto temporal, información externa e imagen.
-        entorno_lower = entorno.lower()
-        entorno_util = bool(entorno) and not all(
-            frase in entorno_lower
-            for frase in (
-                "no se pudo obtener la hora",
-                "no se pudo obtener información externa",
-                "no se pudo describir la imagen",
-            )
-        )
-
+        # Especialista 2: contexto y planificación de la visita.
         if entorno:
             secciones.append(
-                "**Contexto de la visita**\n" + entorno
+                "**Planificación y contexto de la visita**\n" + entorno
             )
 
-        if any(
-            frase in entorno_lower
-            for frase in (
-                "no se pudo obtener",
-                "no se pudo describir",
-                "error:",
-            )
-        ):
-            limitaciones.append(
-                "Una o varias herramientas no han devuelto información fiable."
-            )
-
-        # Si ya existen pasos estructurados, los conservamos.
-        # No extraemos como acciones las líneas descriptivas de las tools.
-        for linea in entorno.splitlines():
-            texto = linea.strip()
-            paso = ""
-
-            if texto.startswith(("- ", "• ", "* ")):
-                paso = texto[2:].strip()
-            elif (
-                len(texto) >= 3
-                and texto[0].isdigit()
-                and texto[1:3] in (". ", ") ")
+            entorno_lower = entorno.lower()
+            if any(
+                texto in entorno_lower
+                for texto in (
+                    "no se pudo obtener",
+                    "no se pudo describir",
+                    "no se ha podido obtener",
+                    "error:",
+                )
             ):
-                paso = texto[3:].strip()
-
-            if paso and paso not in plan:
-                plan.append(paso)
-
-        # Si los especialistas han aportado información utilizable, pero
-        # todavía no han construido un itinerario, proponemos acciones
-        # de revisión basadas en las fuentes disponibles. No inventamos
-        # nombres de lugares, horarios ni condiciones del parque.
-        if not plan and (normas_utiles or entorno_util):
-            if normas_utiles:
-                plan.append(
-                    "Revisar los lugares de interés identificados "
-                    "en la información documental disponible."
+                limitaciones.append(
+                    "Una o varias herramientas de contexto no han devuelto información fiable."
                 )
 
-            if entorno_util:
-                plan.append(
-                    "Revisar el contexto temporal y la información externa "
-                    "disponible antes de organizar la visita."
-                )
+            # Solo extraemos acciones que el especialista haya presentado
+            # explícitamente como pasos enumerados o viñetas.
+            for linea in entorno.splitlines():
+                texto = linea.strip()
+                paso = ""
 
+                if texto.startswith(("- ", "• ", "* ")):
+                    paso = texto[2:].strip()
+                elif (
+                    len(texto) >= 3
+                    and texto[0].isdigit()
+                    and texto[1:3] in (". ", ") ")
+                ):
+                    paso = texto[3:].strip()
+
+                paso_lower = paso.lower()
+
+                # No convertimos mensajes de error en acciones.
+                if paso and not any(
+                    error in paso_lower
+                    for error in (
+                        "no se pudo obtener",
+                        "no se pudo describir",
+                        "no se ha podido obtener",
+                        "error:",
+                    )
+                ):
+                    if paso not in plan:
+                        plan.append(paso)
+
+        # Respuesta informativa, incluso cuando no hay un plan aprobable.
         if secciones:
             respuesta = "\n\n".join(secciones)
         else:
@@ -673,27 +660,27 @@ def build_graph(
             )
 
         if limitaciones:
-            respuesta += (
-                "\n\n**Limitaciones**\n"
-                + "\n".join(
-                    f"- {texto}"
-                    for texto in dict.fromkeys(limitaciones)
-                )
+            respuesta += "\n\n**Limitaciones**\n" + "\n".join(
+                f"- {limitacion}"
+                for limitacion in dict.fromkeys(limitaciones)
             )
 
+        # Solo un plan concreto puede pasar al nodo de aprobación.
         if plan:
             respuesta += (
-                "\n\n**Propuesta pendiente de aprobación**\n"
+                "\n\n**Propuesta de visita**\n"
                 + "\n".join(f"- {paso}" for paso in plan)
-                + "\n\nNo se aplicará hasta que la apruebes."
+                + "\n\nLa propuesta queda pendiente de tu aprobación."
             )
         else:
             respuesta += (
-                "\n\nNo se ha generado una propuesta aprobable porque "
-                "no hay información suficiente."
+                "\n\nNo se ha generado un plan aprobable porque los "
+                "resultados disponibles no contienen pasos concretos "
+                "de visita. Puedes concretar tus preferencias para "
+                "preparar una propuesta."
             )
 
-        return {
+        actualizacion = {
             "respuesta": respuesta,
             "plan": plan,
             "aprobado": None,
@@ -701,6 +688,19 @@ def build_graph(
             "done": False,
         }
 
+        if plan:
+            evento_pausa = _evento(
+                "hitl",
+                "pausa",
+                {"numero_pasos": len(plan)},
+                "pending",
+                "Plan pendiente de aprobación humana.",
+            )
+            actualizacion["traza"] = (
+                estado.get("traza", []) + [evento_pausa]
+            )
+
+        return actualizacion
 
 
 
@@ -717,7 +717,7 @@ def build_graph(
             if not plan:
                 evento = _evento(
                     "hitl",
-                    "aplicar",
+                    "aprobar",
                     {"comentario": comentario},
                     "error",
                     "No se puede completar un plan vacío.",
