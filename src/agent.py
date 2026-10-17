@@ -53,7 +53,7 @@ def procesar_turno(
     imagen: dict | None = None,
 ) -> dict:
     """Procesa una consulta y devuelve la respuesta según el contrato público."""
-
+    config = _config(thread_id) if isinstance(thread_id, str) else {}
     try:
         if not isinstance(texto, str) or not texto.strip():
             return _respuesta_publica(
@@ -61,8 +61,6 @@ def procesar_turno(
                 {},
                 error="La consulta no puede estar vacía.",
             )
-        
-        config = _config(thread_id)
 
         if not isinstance(thread_id, str) or not thread_id.strip():
             return _respuesta_publica(
