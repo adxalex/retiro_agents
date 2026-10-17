@@ -1,15 +1,23 @@
 
+"""Grafo de ejecución del agente del Parque del Retiro."""
+
 from datetime import datetime
 from typing import Callable
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command
 
+import config
 from src.state import EstadoGrafo
 
 
+RUTAS_VALIDAS = {"normas", "entorno", "sintetizar"}
+ESPECIALISTAS = {"normas", "entorno"}
+
+
 def _ahora_iso() -> str:
-    """Devuelve la fecha y hora actual en formato ISO 8601."""
+    """Devuelve la fecha y hora con zona horaria."""
     return datetime.now().astimezone().isoformat()
 
 
@@ -27,19 +35,21 @@ def _evento(
         "nombre": nombre,
         "args": args,
         "status": status,
-        "preview": preview[:200],
+        "preview": str(preview)[:200],
     }
 
 
 def _ejecutar_tool(nombre: str, args: dict) -> dict:
-    """Ejecuta una herramienta sin propagar errores al grafo."""
+    """Ejecuta una herramienta sin propagar excepciones."""
     try:
         from src.tools import ejecutar_tool
 
         resultado = ejecutar_tool(nombre, args)
 
         if not isinstance(resultado, dict):
-            raise TypeError("La herramienta debe devolver un diccionario.")
+            raise TypeError(
+                "La herramienta debe devolver un diccionario."
+            )
 
         return resultado
 
@@ -59,26 +69,53 @@ def _ejecutar_tool(nombre: str, args: dict) -> dict:
         }
 
 
+def _limite_alcanzado(estado: EstadoGrafo) -> bool:
+    """Comprueba el límite global de iteraciones."""
+    return estado.get("pasos", 0) >= config.MAX_ITER
+
+
+def _especialista_disponible(
+    estado: EstadoGrafo,
+    especialista: str,
+) -> bool:
+    """Comprueba el límite de ejecuciones de un especialista."""
+    contadores = estado.get("pasos_especialista", {})
+    return (
+        contadores.get(especialista, 0)
+        < config.MAX_STEPS_ESPECIALISTA
+    )
+
+
+def _actualizar_contador(
+    estado: EstadoGrafo,
+    especialista: str,
+) -> dict[str, int]:
+    """Incrementa el contador de ejecuciones de un especialista."""
+    contadores = dict(estado.get("pasos_especialista", {}))
+    contadores[especialista] = contadores.get(especialista, 0) + 1
+    return contadores
+
+
 def _ruta_fallback(estado: EstadoGrafo) -> str:
-    """Selecciona un especialista mediante reglas Python si falla el supervisor LLM."""
+    """Selecciona una ruta determinista si falla el supervisor LLM."""
     pedido = estado.get("pedido", "").lower()
     notas = estado.get("notas", {})
-    pasos = estado.get("pasos", 0)
 
-    # Evitamos superar el límite de iteraciones.
-    if pasos >= 6:
+    if _limite_alcanzado(estado):
         return "sintetizar"
 
     palabras_planificacion = (
         "plan", "ruta", "visita", "horario", "hora", "tiempo",
         "meteorología", "clima", "hoy", "mañana", "organizar",
         "itinerario", "cuánto tiempo", "abierto", "abren", "cierran",
+        "lluvia", "temperatura", "previsión",
     )
+
     palabras_conocimiento = (
         "dónde", "donde", "historia", "norma", "regla", "servicio",
         "instalación", "instalaciones", "estanque", "palacio",
         "jardín", "jardines", "monumento", "fuente", "retiro",
-        "se puede", "qué hay", "que hay",
+        "se puede", "qué hay", "que hay", "acceso", "entrada",
     )
 
     necesita_planificacion = any(
@@ -88,69 +125,146 @@ def _ruta_fallback(estado: EstadoGrafo) -> str:
         palabra in pedido for palabra in palabras_conocimiento
     )
 
-    # Si el usuario necesita ambas especialidades, se consultan las dos.
-    if necesita_planificacion and "entorno" not in notas:
+    # Si la petición necesita ambos especialistas, priorizamos
+    # el que todavía no se haya consultado.
+    if (
+        necesita_planificacion
+        and "entorno" not in notas
+        and _especialista_disponible(estado, "entorno")
+    ):
         return "entorno"
 
-    if necesita_conocimiento and "normas" not in notas:
+    if (
+        necesita_conocimiento
+        and "normas" not in notas
+        and _especialista_disponible(estado, "normas")
+    ):
         return "normas"
 
-    # Para consultas generales, empezamos por el conocimiento del parque.
+    # Si la petición no encaja en palabras conocidas, empezamos
+    # por el conocimiento documentado.
     if not notas:
+        if _especialista_disponible(estado, "normas"):
+            return "normas"
+        if _especialista_disponible(estado, "entorno"):
+            return "entorno"
+
+    # Si ya hay información, intentamos consultar el especialista
+    # que falte, respetando siempre sus límites.
+    if (
+        "normas" not in notas
+        and _especialista_disponible(estado, "normas")
+    ):
         return "normas"
+
+    if (
+        "entorno" not in notas
+        and _especialista_disponible(estado, "entorno")
+    ):
+        return "entorno"
 
     return "sintetizar"
 
 
 def _seleccionar_ruta(estado: EstadoGrafo) -> str:
-    """Intenta usar un supervisor LLM y recurre a Python si falla."""
+    """Selecciona el siguiente nodo mediante el supervisor LLM."""
+    if _limite_alcanzado(estado):
+        return "sintetizar"
+
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        from src import config
 
         modelo = getattr(
             config,
             "LLM_MODEL",
-            getattr(config, "MODELO_PRINCIPAL", "gemini-2.5-flash"),
+            getattr(
+                config,
+                "MODELO_PRINCIPAL",
+                "gemini-2.5-flash",
+            ),
         )
 
         llm = ChatGoogleGenerativeAI(model=modelo)
 
         mensaje = (
-            "Eres el supervisor de un agente sobre el Parque del Retiro de Madrid. "
-            "Selecciona el siguiente nodo y responde SOLO con uno de estos nombres: "
-            "'normas', 'entorno' o 'sintetizar'.\n"
-            "'normas' consulta el conocimiento documentado del parque mediante RAG.\n"
-            "'entorno' consulta contexto de visita, como hora, meteorología o imagen.\n"
-            "'sintetizar' termina la consulta a especialistas y prepara la respuesta.\n"
-            f"Consulta del usuario: {estado.get('pedido', '')}\n"
-            f"Notas obtenidas: {list(estado.get('notas', {}).keys())}\n"
-            f"Iteración actual: {estado.get('pasos', 0)}"
+            "Eres el supervisor de un agente del Parque del Retiro "
+            "de Madrid. Responde SOLO con uno de estos nombres: "
+            "normas, entorno o sintetizar.\n"
+            "normas: consulta el conocimiento documentado del parque.\n"
+            "entorno: consulta el contexto temporal y externo de la visita.\n"
+            "sintetizar: termina las consultas y prepara la respuesta.\n"
+            f"Consulta: {estado.get('pedido', '')}\n"
+            f"Especialistas consultados: "
+            f"{list(estado.get('notas', {}).keys())}\n"
+            f"Iteración: {estado.get('pasos', 0)}"
         )
 
         resultado = llm.invoke(mensaje)
         ruta = resultado.content.strip().lower().strip("'\"")
 
-        if ruta in {"normas", "entorno", "sintetizar"}:
-            if estado.get("pasos", 0) >= 6:
-                return "sintetizar"
+        if ruta in RUTAS_VALIDAS:
             return ruta
 
     except Exception:
-        # Si el modelo no está disponible, usamos la selección determinista.
+        # Si el modelo no está disponible, usamos el fallback.
         pass
 
     return _ruta_fallback(estado)
 
 
-def build_graph(
-    tool_runner: Callable | None = None,
-):
-    """Construye y compila el grafo del agente con pausa antes de aplicar el plan."""
+def _formatear_resultado_rag(data: dict) -> str:
+    """Conserva respuesta, fuentes y citas disponibles del RAG."""
+    if not isinstance(data, dict):
+        return str(data)
+
+    partes = []
+
+    respuesta = data.get("respuesta")
+    if respuesta:
+        partes.append(str(respuesta))
+
+    fuentes = data.get("fuentes")
+    if fuentes:
+        partes.append(f"Fuentes: {fuentes}")
+
+    citas = data.get("citas")
+    if citas:
+        partes.append(f"Citas: {citas}")
+
+    if data.get("abstuvo"):
+        motivo = data.get("motivo_abstencion")
+        partes.append(
+            "El sistema RAG no ha podido confirmar la respuesta."
+            + (f" Motivo: {motivo}" if motivo else "")
+        )
+
+    return "\n".join(partes) if partes else str(data)
+
+
+def build_graph(tool_runner: Callable | None = None):
+    """Construye y devuelve el grafo compilado del agente."""
     ejecutar = tool_runner or _ejecutar_tool
 
-    def supervisor(estado: EstadoGrafo) -> dict:
+    def supervisor(estado: EstadoGrafo) -> Command:
+        """Selecciona una ruta y aplica los límites de ejecución."""
         ruta = _seleccionar_ruta(estado)
+
+        # Solo se permiten las rutas definidas en el contrato.
+        if ruta not in RUTAS_VALIDAS:
+            ruta = _ruta_fallback(estado)
+
+        # No permitimos ejecutar especialistas que hayan agotado
+        # su número máximo de ejecuciones.
+        if (
+            ruta in ESPECIALISTAS
+            and not _especialista_disponible(estado, ruta)
+        ):
+            ruta = _ruta_fallback(estado)
+
+        # Última barrera de seguridad.
+        if ruta not in RUTAS_VALIDAS:
+            ruta = "sintetizar"
+
         evento = _evento(
             "supervisor",
             ruta,
@@ -159,26 +273,28 @@ def build_graph(
             f"Siguiente nodo seleccionado: {ruta}",
         )
 
-        return {
-            "pasos": estado.get("pasos", 0) + 1,
-            "traza": estado.get("traza", []) + [evento],
-        }
+        return Command(
+            update={
+                "pasos": estado.get("pasos", 0) + 1,
+                "traza": estado.get("traza", []) + [evento],
+            },
+            goto=ruta,
+        )
 
     def conocimiento_retiro(estado: EstadoGrafo) -> dict:
+        """Consulta el conocimiento documentado mediante RAG."""
         nombre_tool = "rag_ask"
-        argumentos = {"pregunta": estado.get("pedido", "")}
+        argumentos = {"consulta": estado.get("pedido", "")}
         resultado = ejecutar(nombre_tool, argumentos)
 
         data = resultado.get("data") or {}
-        if isinstance(data, dict):
-            nota = str(data.get("respuesta", data))
-        else:
-            nota = str(data)
+        nota = _formatear_resultado_rag(data)
 
         if resultado.get("status") != "ok":
             nota = (
-                f"No se pudo consultar el conocimiento documentado del parque: "
-                f"{resultado.get('error') or 'error desconocido'}"
+                "No se pudo consultar el conocimiento documentado "
+                "del parque. No se ha confirmado información del RAG. "
+                f"Error: {resultado.get('error') or 'desconocido'}"
             )
 
         evento = resultado.get("traza") or _evento(
@@ -194,45 +310,102 @@ def build_graph(
 
         return {
             "notas": notas,
+            "pasos_especialista": _actualizar_contador(
+                estado, "normas"
+            ),
             "traza": estado.get("traza", []) + [evento],
         }
 
     def planificacion_visita(estado: EstadoGrafo) -> dict:
-        # En esta primera versión se consulta la hora. Más adelante
-        # ampliaremos el especialista con meteorología e imágenes.
+        """Consulta hora, información externa e imagen opcional."""
+        resultados = []
+        eventos = []
+
+        # Hora y contexto temporal.
         nombre_tool = "hora_actual"
-        argumentos = {}
-        resultado = ejecutar(nombre_tool, argumentos)
-
+        resultado = ejecutar(nombre_tool, {})
         data = resultado.get("data") or {}
-        if isinstance(data, dict):
-            nota = str(data)
-        else:
-            nota = str(data)
 
-        if resultado.get("status") != "ok":
-            nota = (
-                "No se pudo obtener el contexto temporal de la visita: "
-                f"{resultado.get('error') or 'error desconocido'}"
+        if resultado.get("status") == "ok":
+            resultados.append(f"Hora y contexto: {data}")
+        else:
+            resultados.append(
+                "No se pudo obtener la hora o el contexto temporal. "
+                f"Error: {resultado.get('error') or 'desconocido'}"
             )
 
-        evento = resultado.get("traza") or _evento(
-            "tool",
-            nombre_tool,
-            argumentos,
-            resultado.get("status", "error"),
-            nota,
+        eventos.append(
+            resultado.get("traza") or _evento(
+                "tool",
+                nombre_tool,
+                {},
+                resultado.get("status", "error"),
+                str(data),
+            )
         )
 
+        # Contexto externo, por ejemplo meteorología.
+        nombre_tool = "api_dominio"
+        resultado = ejecutar(nombre_tool, {})
+        data = resultado.get("data") or {}
+
+        if resultado.get("status") == "ok":
+            resultados.append(f"Información externa: {data}")
+        else:
+            resultados.append(
+                "No se pudo obtener información externa. "
+                f"Error: {resultado.get('error') or 'desconocido'}"
+            )
+
+        eventos.append(
+            resultado.get("traza") or _evento(
+                "tool",
+                nombre_tool,
+                {},
+                resultado.get("status", "error"),
+                str(data),
+            )
+        )
+
+        # La imagen es opcional.
+        imagen = estado.get("imagen")
+        if imagen:
+            nombre_tool = "describir_imagen"
+            argumentos = {"imagen": imagen}
+            resultado = ejecutar(nombre_tool, argumentos)
+            data = resultado.get("data") or {}
+
+            if resultado.get("status") == "ok":
+                resultados.append(f"Descripción de imagen: {data}")
+            else:
+                resultados.append(
+                    "No se pudo describir la imagen. "
+                    f"Error: {resultado.get('error') or 'desconocido'}"
+                )
+
+            eventos.append(
+                resultado.get("traza") or _evento(
+                    "tool",
+                    nombre_tool,
+                    argumentos,
+                    resultado.get("status", "error"),
+                    str(data),
+                )
+            )
+
         notas = dict(estado.get("notas", {}))
-        notas["entorno"] = nota
+        notas["entorno"] = "\n".join(resultados)
 
         return {
             "notas": notas,
-            "traza": estado.get("traza", []) + [evento],
+            "pasos_especialista": _actualizar_contador(
+                estado, "entorno"
+            ),
+            "traza": estado.get("traza", []) + eventos,
         }
 
     def sintetizar(estado: EstadoGrafo) -> dict:
+        """Combina las notas y prepara la respuesta y el plan."""
         notas = estado.get("notas", {})
         partes = []
 
@@ -243,14 +416,16 @@ def build_graph(
 
         if notas.get("entorno"):
             partes.append(
-                "Planificación y contexto de visita:\n" + notas["entorno"]
+                "Planificación y contexto de visita:\n"
+                + notas["entorno"]
             )
 
         respuesta = "\n\n".join(partes)
+
         if not respuesta:
             respuesta = (
-                "No he podido obtener información suficiente para responder "
-                "con garantías."
+                "No he podido obtener información suficiente "
+                "para responder con garantías."
             )
 
         plan = [
@@ -263,19 +438,26 @@ def build_graph(
             "respuesta": respuesta,
             "plan": plan,
             "aprobado": None,
+            "comentario_aprobacion": "",
+            "done": False,
         }
 
     def aplicar(estado: EstadoGrafo) -> dict:
+        """Procesa la decisión humana después de la pausa."""
         aprobado = estado.get("aprobado")
+        comentario = (
+            estado.get("comentario_aprobacion") or ""
+        ).strip()
 
         if aprobado is True:
             evento = _evento(
                 "hitl",
                 "aprobar",
-                {},
+                {"comentario": comentario},
                 "ok",
                 "El usuario ha aprobado el plan.",
             )
+
             return {
                 "done": True,
                 "traza": estado.get("traza", []) + [evento],
@@ -285,50 +467,45 @@ def build_graph(
             evento = _evento(
                 "hitl",
                 "rechazar",
-                {},
+                {"comentario": comentario},
                 "ok",
                 "El usuario ha rechazado el plan.",
             )
+
             return {
                 "pedido": "",
                 "notas": {},
                 "respuesta": "",
                 "plan": [],
                 "aprobado": None,
+                "comentario_aprobacion": "",
                 "pasos": 0,
+                "pasos_especialista": {},
                 "done": False,
                 "traza": estado.get("traza", []) + [evento],
             }
 
-        # La aplicación nunca debe marcarse como terminada sin aprobación.
+        # Nunca completar un plan sin aprobación explícita.
         return {"done": False}
 
-    grafo = StateGraph(EstadoGrafo)
+    # Construcción del grafo.
+    builder = StateGraph(EstadoGrafo)
 
-    grafo.add_node("supervisor", supervisor)
-    grafo.add_node("normas", conocimiento_retiro)
-    grafo.add_node("entorno", planificacion_visita)
-    grafo.add_node("sintetizar", sintetizar)
-    grafo.add_node("aplicar", aplicar)
+    builder.add_node("supervisor", supervisor)
+    builder.add_node("normas", conocimiento_retiro)
+    builder.add_node("entorno", planificacion_visita)
+    builder.add_node("sintetizar", sintetizar)
+    builder.add_node("aplicar", aplicar)
 
-    grafo.add_edge(START, "supervisor")
+    # Conexiones.
+    builder.add_edge(START, "supervisor")
+    builder.add_edge("normas", "supervisor")
+    builder.add_edge("entorno", "supervisor")
+    builder.add_edge("sintetizar", "aplicar")
+    builder.add_edge("aplicar", END)
 
-    grafo.add_conditional_edges(
-        "supervisor",
-        _seleccionar_ruta,
-        {
-            "normas": "normas",
-            "entorno": "entorno",
-            "sintetizar": "sintetizar",
-        },
-    )
-
-    grafo.add_edge("normas", "supervisor")
-    grafo.add_edge("entorno", "supervisor")
-    grafo.add_edge("sintetizar", "aplicar")
-    grafo.add_edge("aplicar", END)
-
-    return grafo.compile(
+    # IMPORTANTE: devolver el grafo compilado.
+    return builder.compile(
         checkpointer=MemorySaver(),
         interrupt_before=["aplicar"],
     )
