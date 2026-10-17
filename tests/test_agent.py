@@ -7,6 +7,11 @@ import src.agent as agent
 import src.graph as graph_module
 
 
+def generador_simulado(prompt, contexto):
+    """Simula el resultado del LLM sin llamadas externas."""
+    return contexto
+
+
 @pytest.fixture
 def agente_pruebas(monkeypatch):
     """Crea un agente aislado sin llamadas a servicios externos."""
@@ -52,7 +57,11 @@ def agente_pruebas(monkeypatch):
         supervisor_determinista,
     )
 
-    grafo = graph_module.build_graph(tool_runner=herramienta_simulada)
+    grafo = graph_module.build_graph(
+        tool_runner=herramienta_simulada,
+        llm_runner=generador_simulado,
+    )
+
     monkeypatch.setattr(agent, "_grafo", grafo)
 
     return agent
@@ -96,6 +105,7 @@ def test_el_grafo_se_pausa_antes_de_aplicar(agente_pruebas):
     snapshot = agente_pruebas._grafo.get_state(
         {"configurable": {"thread_id": thread_id}}
     )
+
     assert "aplicar" in snapshot.next
 
 
@@ -137,6 +147,7 @@ def test_rechazar_plan_limpia_el_pedido(agente_pruebas):
     estado = agente_pruebas._estado_actual(
         {"configurable": {"thread_id": thread_id}}
     )
+
     assert estado["pedido"] == ""
     assert estado["notas"] == {}
     assert estado["aprobado"] is None
@@ -149,6 +160,7 @@ def test_se_puede_iniciar_otro_pedido_tras_rechazar(agente_pruebas):
         "¿Qué lugares interesantes hay en el Retiro?",
         thread_id,
     )
+
     agente_pruebas.aprobar_plan(thread_id, False)
 
     resultado = agente_pruebas.procesar_turno(
@@ -169,6 +181,7 @@ def test_las_conversaciones_no_comparten_estado(agente_pruebas):
         "¿Qué lugares interesantes hay en el Retiro?",
         thread_a,
     )
+
     agente_pruebas.procesar_turno(
         "¿Qué lugares interesantes hay en el Retiro?",
         thread_b,
@@ -179,12 +192,14 @@ def test_las_conversaciones_no_comparten_estado(agente_pruebas):
     estado_a = agente_pruebas._estado_actual(
         {"configurable": {"thread_id": thread_a}}
     )
+
     estado_b = agente_pruebas._estado_actual(
         {"configurable": {"thread_id": thread_b}}
     )
 
     assert estado_a["done"] is True
     assert estado_b["done"] is False
+
     assert agente_pruebas._hay_plan_pendiente(
         {"configurable": {"thread_id": thread_b}}
     )
@@ -196,14 +211,22 @@ def test_la_traza_registra_supervisor_y_herramientas(agente_pruebas):
         str(uuid4()),
     )
 
-    origenes = {evento["origen"] for evento in resultado["traza"]}
+    origenes = {
+        evento["origen"]
+        for evento in resultado["traza"]
+    }
 
     assert "supervisor" in origenes
     assert "tool" in origenes
 
     for evento in resultado["traza"]:
         assert {
-            "ts", "origen", "nombre", "args", "status", "preview"
+            "ts",
+            "origen",
+            "nombre",
+            "args",
+            "status",
+            "preview",
         }.issubset(evento)
 
 
@@ -218,7 +241,10 @@ def test_no_se_puede_aprobar_si_no_hay_plan(agente_pruebas):
 
 
 def test_procesar_turno_rechaza_consultas_vacias(agente_pruebas):
-    resultado = agente_pruebas.procesar_turno("   ", str(uuid4()))
+    resultado = agente_pruebas.procesar_turno(
+        "   ",
+        str(uuid4()),
+    )
 
     assert resultado["error"] is not None
     assert resultado["pendiente_aprobacion"] is False
@@ -243,6 +269,7 @@ def test_historial_se_conserva_en_la_misma_conversacion(agente_pruebas):
         "¿Qué lugares interesantes hay en el Retiro?",
         thread_id,
     )
+
     agente_pruebas.aprobar_plan(thread_id, False)
 
     agente_pruebas.procesar_turno(
@@ -261,6 +288,7 @@ def test_historial_se_conserva_en_la_misma_conversacion(agente_pruebas):
         "lugares interesantes" in contenido.lower()
         for contenido in contenidos
     )
+
     assert any(
         "historia del parque" in contenido.lower()
         for contenido in contenidos

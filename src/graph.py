@@ -15,6 +15,76 @@ RUTAS_VALIDAS = {"normas", "entorno", "sintetizar"}
 ESPECIALISTAS = {"normas", "entorno"}
 
 
+PROMPT_NORMAS = """
+Eres el especialista de conocimiento del Parque del Retiro de Madrid.
+
+Tu responsabilidad es responder preguntas sobre historia, lugares,
+jardines, instalaciones, servicios y normas usando exclusivamente
+la información proporcionada por la herramienta RAG.
+
+Instrucciones:
+- No inventes hechos que no aparezcan en el resultado del RAG.
+- Respeta las abstenciones y limitaciones del RAG.
+- Conserva las fuentes y citas que proporcione la herramienta.
+- Si la evidencia es insuficiente, indícalo claramente.
+- Responde en español, de forma clara y concisa.
+"""
+
+PROMPT_ENTORNO = """
+Eres el especialista de planificación de visitas al Parque del Retiro.
+
+Tu responsabilidad es interpretar la petición del usuario y los datos
+proporcionados por las herramientas de hora, contexto externo e imagen.
+
+Instrucciones:
+- No inventes horarios, meteorología, cierres ni resultados de herramientas.
+- Distingue los datos comprobados de la información no disponible.
+- Si la petición requiere organizar una visita, propone pasos concretos
+  solo cuando estén respaldados por la información disponible.
+- Presenta los pasos de un plan como viñetas que comiencen por "- ".
+- Si no hay información suficiente para proponer un plan fiable,
+  indícalo en lugar de inventar un itinerario.
+- Responde en español.
+"""
+
+
+def _generar_nota_especialista(
+    prompt: str,
+    contexto: str,
+    llm_runner: Callable | None = None,
+) -> str | None:
+    """Genera la nota de un especialista, sin propagar errores del LLM."""
+    try:
+        if llm_runner is not None:
+            resultado = llm_runner(prompt, contexto)
+        else:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            modelo = getattr(
+                config,
+                "LLM_MODEL",
+                "gemini-2.5-flash",
+            )
+            llm = ChatGoogleGenerativeAI(model=modelo)
+            resultado = llm.invoke([
+                ("system", prompt),
+                ("human", contexto),
+            ])
+
+        contenido = getattr(resultado, "content", resultado)
+
+        if isinstance(contenido, str) and contenido.strip():
+            return contenido.strip()
+
+    except Exception:
+        # El especialista conserva el resultado original de las tools
+        # si el LLM falla o no está disponible.
+        return None
+
+    return None
+
+
+
 def _ahora_iso() -> str:
     """Devuelve la fecha y hora con zona horaria."""
     return datetime.now().astimezone().isoformat()
@@ -210,6 +280,32 @@ def _seleccionar_ruta(estado: EstadoGrafo) -> str:
 
     return _ruta_fallback(estado)
 
+def _ruta_supervisor_limitada(estado: EstadoGrafo) -> str:
+    """Selecciona una ruta respetando el límite de iteraciones."""
+    # Reservamos la última ejecución del supervisor para sintetizar.
+    if estado.get("pasos", 0) >= config.MAX_ITER - 1:
+        return "sintetizar"
+
+    ruta = _seleccionar_ruta(estado)
+
+    if ruta not in RUTAS_VALIDAS:
+        ruta = _ruta_fallback(estado)
+
+    if (
+        ruta in ESPECIALISTAS
+        and not _especialista_disponible(estado, ruta)
+    ):
+        ruta = _ruta_fallback(estado)
+
+    if (
+        ruta in ESPECIALISTAS
+        and not _especialista_disponible(estado, ruta)
+    ):
+        return "sintetizar"
+
+    return ruta if ruta in RUTAS_VALIDAS else "sintetizar"
+
+
 
 def _formatear_resultado_rag(data: dict) -> str:
     """Conserva respuesta, fuentes y citas disponibles del RAG."""
@@ -240,28 +336,56 @@ def _formatear_resultado_rag(data: dict) -> str:
     return "\n".join(partes) if partes else str(data)
 
 
-def build_graph(tool_runner: Callable | None = None):
+def _ruta_tras_sintesis(estado: EstadoGrafo) -> str:
+    """Solo solicita aprobación si existe un plan no vacío."""
+    plan = estado.get("plan") or []
+
+    if any(
+        isinstance(paso, str) and paso.strip()
+        for paso in plan
+    ):
+        return "aplicar"
+
+    return END
+
+
+
+def build_graph(
+    tool_runner: Callable | None = None,
+    llm_runner: Callable | None = None,
+):
     """Construye y devuelve el grafo compilado del agente."""
     ejecutar = tool_runner or _ejecutar_tool
 
+    
     def supervisor(estado: EstadoGrafo) -> Command:
-        """Selecciona una ruta y aplica los límites de ejecución."""
-        ruta = _seleccionar_ruta(estado)
+        """Selecciona una ruta sin superar MAX_ITER pasadas."""
+        pasos_actuales = estado.get("pasos", 0)
 
-        # Solo se permiten las rutas definidas en el contrato.
+        # La última pasada disponible se reserva para sintetizar.
+        # Así nunca se envía un especialista al supervisor por séptima vez.
+        if pasos_actuales >= config.MAX_ITER - 1:
+            ruta = "sintetizar"
+        else:
+            ruta = _ruta_supervisor_limitada(estado)
+
         if ruta not in RUTAS_VALIDAS:
             ruta = _ruta_fallback(estado)
 
-        # No permitimos ejecutar especialistas que hayan agotado
-        # su número máximo de ejecuciones.
         if (
             ruta in ESPECIALISTAS
             and not _especialista_disponible(estado, ruta)
         ):
             ruta = _ruta_fallback(estado)
 
-        # Última barrera de seguridad.
         if ruta not in RUTAS_VALIDAS:
+            ruta = "sintetizar"
+
+        # Un especialista agotado no puede volver a seleccionarse.
+        if (
+            ruta in ESPECIALISTAS
+            and not _especialista_disponible(estado, ruta)
+        ):
             ruta = "sintetizar"
 
         evento = _evento(
@@ -274,7 +398,7 @@ def build_graph(tool_runner: Callable | None = None):
 
         return Command(
             update={
-                "pasos": estado.get("pasos", 0) + 1,
+                "pasos": pasos_actuales + 1,
                 "traza": estado.get("traza", []) + [evento],
             },
             goto=ruta,
@@ -283,11 +407,12 @@ def build_graph(tool_runner: Callable | None = None):
     def conocimiento_retiro(estado: EstadoGrafo) -> dict:
         """Consulta el conocimiento documentado mediante RAG."""
         nombre_tool = "rag_ask"
-        argumentos = {"consulta": estado.get("pedido", "")}
-        resultado = ejecutar(nombre_tool, argumentos)
+        argumentos = {"pregunta": estado.get("pedido", "")}
 
+        resultado = ejecutar(nombre_tool, argumentos)
         data = resultado.get("data") or {}
-        nota = _formatear_resultado_rag(data)
+
+        nota_original = _formatear_resultado_rag(data)
 
         if resultado.get("status") != "ok":
             nota = (
@@ -295,25 +420,42 @@ def build_graph(tool_runner: Callable | None = None):
                 "del parque. No se ha confirmado información del RAG. "
                 f"Error: {resultado.get('error') or 'desconocido'}"
             )
+        else:
+            contexto = (
+                f"Petición del usuario:\n"
+                f"{estado.get('pedido', '')}\n\n"
+                f"Resultado de rag_ask:\n{nota_original}"
+            )
 
-        evento = resultado.get("traza") or _evento(
+            nota = (
+                _generar_nota_especialista(
+                    PROMPT_NORMAS,
+                    contexto,
+                    llm_runner,
+                )
+                or nota_original
+            )
+
+        notas = dict(estado.get("notas", {}))
+        notas["normas"] = nota
+
+        # Registrar también la ejecución de la herramienta en la traza.
+        evento_tool = resultado.get("traza") or _evento(
             "tool",
             nombre_tool,
             argumentos,
             resultado.get("status", "error"),
-            nota,
+            nota_original or resultado.get("error", ""),
         )
-
-        notas = dict(estado.get("notas", {}))
-        notas["normas"] = nota
 
         return {
             "notas": notas,
             "pasos_especialista": _actualizar_contador(
                 estado, "normas"
             ),
-            "traza": estado.get("traza", []) + [evento],
+            "traza": estado.get("traza", []) + [evento_tool],
         }
+
 
     def planificacion_visita(estado: EstadoGrafo) -> dict:
         """Consulta hora, información externa e imagen opcional."""
@@ -392,8 +534,27 @@ def build_graph(tool_runner: Callable | None = None):
                 )
             )
 
+        
+        contexto_original = "\n".join(resultados)
+
+        contexto = (
+            f"Petición del usuario:\n"
+            f"{estado.get('pedido', '')}\n\n"
+            f"Datos obtenidos de las herramientas:\n"
+            f"{contexto_original}"
+        )
+
+        nota_generada = _generar_nota_especialista(
+            PROMPT_ENTORNO,
+            contexto,
+            llm_runner,
+        )
+
+        # Si falla el LLM, conservamos los datos originales.
+        nota = nota_generada or contexto_original
+
         notas = dict(estado.get("notas", {}))
-        notas["entorno"] = "\n".join(resultados)
+        notas["entorno"] = nota
 
         return {
             "notas": notas,
@@ -628,12 +789,20 @@ def build_graph(tool_runner: Callable | None = None):
     builder.add_node("sintetizar", sintetizar)
     builder.add_node("aplicar", aplicar)
 
+    
     # Conexiones.
     builder.add_edge(START, "supervisor")
     builder.add_edge("normas", "supervisor")
     builder.add_edge("entorno", "supervisor")
-    builder.add_edge("sintetizar", "aplicar")
+
+    # Solo se solicita aprobación si sintetizar ha generado un plan.
+    builder.add_conditional_edges(
+        "sintetizar",
+        _ruta_tras_sintesis,
+    )
+
     builder.add_edge("aplicar", END)
+
 
     # IMPORTANTE: devolver el grafo compilado.
     return builder.compile(

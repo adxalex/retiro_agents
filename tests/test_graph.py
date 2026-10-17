@@ -107,3 +107,43 @@ def test_aplicar_no_completa_sin_aprobacion_explicita():
 
     assert resultado["done"] is False
     assert resultado["traza"][-1]["status"] == "blocked"
+
+
+def test_sintesis_sin_plan_no_pasa_a_aplicar():
+    from src.graph import _ruta_tras_sintesis
+    from langgraph.graph import END
+
+    estado = {"plan": [], "respuesta": "Respuesta informativa"}
+
+    assert _ruta_tras_sintesis(estado) == END
+
+
+def test_sintesis_con_plan_pasa_a_aplicar():
+    from src.graph import _ruta_tras_sintesis
+
+    estado = {"plan": ["Revisar la información disponible"]}
+
+    assert _ruta_tras_sintesis(estado) == "aplicar"
+
+
+def test_supervisor_reserva_la_ultima_pasada_para_sintesis(monkeypatch):
+    from src.graph import _ruta_supervisor_limitada
+
+    def selector_que_no_debe_llamarse(estado):
+        raise AssertionError(
+            "No debe consultarse al selector en la última pasada"
+        )
+
+    monkeypatch.setattr(
+        "src.graph._seleccionar_ruta",
+        selector_que_no_debe_llamarse,
+    )
+
+    estado = {
+        "pedido": "Organizar una visita",
+        "notas": {},
+        "pasos": config.MAX_ITER - 1,
+        "pasos_especialista": {},
+    }
+
+    assert _ruta_supervisor_limitada(estado) == "sintetizar"

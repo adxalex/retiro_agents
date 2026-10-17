@@ -141,8 +141,13 @@ def aprobar_plan(
     aprobado: bool,
     comentario: str = "",
 ) -> dict:
-    """Aprueba o rechaza el plan que está pendiente en una conversación."""
-    
+    """Aprueba o rechaza el plan que está pendiente."""
+
+    config = (
+        _config(thread_id)
+        if isinstance(thread_id, str)
+        else {}
+    )
 
     try:
         if not isinstance(thread_id, str) or not thread_id.strip():
@@ -152,7 +157,6 @@ def aprobar_plan(
                 error="El thread_id debe ser una cadena no vacía.",
             )
 
-        config = _config(thread_id)
 
         if not isinstance(aprobado, bool):
             return _respuesta_publica(

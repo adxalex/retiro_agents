@@ -58,6 +58,24 @@ El sistema debe disponer de un estado tipado y compartido entre los nodos que pe
 
 Los campos concretos y sus tipos se definirán en la implementación, manteniendo un contrato estable para los consumidores del agente.
 
+El estado implementado en `src/state.py` incluye los siguientes campos:
+
+- `thread_id`: identificador de la conversación.
+- `historial`: mensajes de la conversación, acumulados mediante `add_messages`.
+- `done`: indicador de finalización.
+- `pedido`: petición que se está procesando.
+- `notas`: resultados de los especialistas.
+- `respuesta`: respuesta sintetizada.
+- `plan`: propuesta pendiente de decisión humana.
+- `aprobado`: decisión humana (`True`, `False` o `None`).
+- `pasos`: contador global de iteraciones.
+- `pasos_especialista`: contador de ejecuciones por especialista.
+- `traza`: eventos de supervisión, herramientas y decisiones humanas.
+- `imagen`: imagen opcional para el especialista de planificación.
+- `comentario_aprobacion`: comentario asociado a la decisión humana.
+
+Los eventos de trazabilidad contienen fecha y hora, origen, nombre, argumentos, estado y una vista previa de hasta 200 caracteres.
+
 ### RF-02. Supervisor
 
 El supervisor debe seleccionar el siguiente paso según la petición y los resultados disponibles.
@@ -67,6 +85,8 @@ Puede dirigir el flujo hacia el especialista de conocimiento, el de planificaci�
 Si falla la decisión del LLM o su respuesta no es válida, debe existir una alternativa determinista implementada en Python.
 
 El supervisor no podrá ignorar los límites de ejecución ni decidir por sí solo que una acción pendiente de aprobación ya está autorizada.
+
+La implementación utiliza un supervisor basado en LLM y un mecanismo determinista de fallback en Python. El fallback prioriza los especialistas según palabras clave de la petición, las notas disponibles y los límites configurados. La ruta final se valida antes de ejecutar el nodo seleccionado.
 
 ### RF-03. Especialistas
 
@@ -78,20 +98,19 @@ El especialista de planificación utilizará las herramientas de contexto dispon
 
 Si una herramienta falla o no devuelve evidencia suficiente, el sistema debe reflejar esa limitación en sus resultados.
 
+Cada especialista tendrá un prompt específico utilizado para interpretar los resultados de sus herramientas. Las instrucciones deberán respetar el alcance del especialista, las limitaciones de la evidencia y la prohibición de inventar resultados de herramientas. Si el LLM falla, el especialista deberá conservar la información original disponible y reflejar las limitaciones.
+
+En la implementación actual, el especialista de conocimiento consulta el RAG mediante `rag_ask`. El especialista de planificación obtiene contexto temporal y externo mediante `hora_actual` y `api_dominio`, y puede utilizar `describir_imagen` cuando se proporciona una imagen. Los resultados y errores de las herramientas se incorporan a las notas y a la trazabilidad del agente.
+
 ### RF-04. Síntesis
 
-El nodo de síntesis debe reunir los resultados relevantes de los especialistas y producir:
+La implementación actual realiza una síntesis determinista en Python: combina las notas disponibles de ambos especialistas, construye la respuesta y genera el plan a partir de sus líneas. Si no hay información, devuelve un mensaje indicando que no dispone de evidencia suficiente. La propuesta queda pendiente de aprobación mediante la interrupción del grafo.
 
-- Una respuesta comprensible para el usuario.
-- Un plan propuesto, cuando corresponda.
-- Las limitaciones o datos no disponibles que sean relevantes.
-- Una indicación clara de que el plan está pendiente de aprobación humana.
-
-La síntesis no equivale a ejecutar el plan ni a autorizarlo.
+Si la información disponible no permite preparar un plan válido, el nodo devolverá una respuesta informativa con las limitaciones pertinentes y un plan vacío. En ese caso, el grafo finalizará el turno sin solicitar aprobación humana. La respuesta informativa no se considerará una propuesta pendiente de aprobación.
 
 ### RF-05. Aplicación y aprobación humana
 
-El nodo `aplicar` debe quedar protegido mediante una interrupción de LangGraph antes de su ejecución, por ejemplo con `interrupt_before=["aplicar"]`.
+Si la síntesis genera un plan válido, el grafo se detendrá antes del nodo aplicar mediante interrupt_before=["aplicar"]. Si no existe un plan válido, el grafo terminará sin interrupción y sin marcar el turno como pendiente de aprobación. El nodo aplicar solo podrá ejecutarse después de una decisión humana explícita sobre un plan existente.
 
 El grafo debe detenerse después de preparar el plan y antes de aplicar los cambios o acciones correspondientes.
 
@@ -111,11 +130,13 @@ Una conversación nueva debe poder utilizar un identificador distinto.
 
 ### RF-07. Límites y finalización
 
-El número máximo de pasos o iteraciones debe estar controlado por Python mediante una constante o configuración explícita.
-
 El agente no podrá ejecutar un bucle indefinido ni delegar exclusivamente en el LLM la decisión de continuar.
 
 Al alcanzar el límite, debe detenerse de forma controlada, informar de que no ha podido completar el flujo y evitar marcar como completado un plan que no haya sido aplicado y confirmado.
+
+El control de ejecución se realiza en Python mediante dos límites configurables: `MAX_ITER` para las iteraciones globales y `MAX_STEPS_ESPECIALISTA` para las ejecuciones de cada especialista. El supervisor selecciona la síntesis cuando se alcanza el límite global y evita dirigir el flujo a especialistas cuyo contador haya alcanzado su máximo.
+
+MAX_ITER representa el número máximo de ejecuciones del nodo supervisor durante un turno. Al llegar a la última ejecución disponible, el supervisor dirigirá el flujo a sintetizar. No podrá iniciar otra pasada ni ejecutar un especialista adicional después de alcanzar el límite.
 
 ### RF-08. Interfaz pública
 
@@ -148,11 +169,11 @@ Los errores del LLM o de las herramientas deben tratarse de forma controlada sie
 - **CA-01:** una petición llega al supervisor y se dirige al especialista apropiado o a la síntesis cuando proceda.
 - **CA-02:** una petición compleja puede utilizar ambos especialistas y combinar sus resultados.
 - **CA-03:** si el supervisor falla, el fallback de Python permite continuar de forma controlada o detener el flujo con un error claro.
-- **CA-04:** la síntesis genera una propuesta y el grafo se interrumpe antes de ejecutar `aplicar`.
+- **CA-04:** con un plan válido, la síntesis prepara la propuesta y el grafo se interrumpe antes de aplicar; sin plan válido, finaliza sin pausa de aprobación.
 - **CA-05:** una aprobación permite reanudar el mismo hilo y marcar `done=True` solo después de una aplicación correcta.
 - **CA-06:** un rechazo no marca el flujo como completado y permite continuar con nuevas instrucciones.
 - **CA-07:** dos turnos del mismo `thread_id` conservan el contexto esperado.
-- **CA-08:** el límite de iteraciones se respeta incluso si el LLM solicita continuar indefinidamente.
+- **CA-08:** el número real de ejecuciones del nodo supervisor nunca supera MAX_ITER, aunque el selector LLM intente continuar.
 - **CA-09:** el agente puede ser invocado desde un cliente distinto de Streamlit.
 - **CA-10:** las pruebas verifican el comportamiento de aprobación, rechazo, fallback, límites y errores relevantes.
 

@@ -78,7 +78,7 @@ def modo_interactivo() -> None:
                         False,
                         comentario,
                     )
-                    ostrar_resultado(resultado)
+                    mostrar_resultado(resultado)
 
                     if resultado.get("error"):
                         continue
