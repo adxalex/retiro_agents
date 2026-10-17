@@ -107,3 +107,7 @@ INDEX_URL = os.getenv(
 )
 # SHA-256 esperado de chroma_retiro_madrid.zip.
 INDEX_SHA256 = "176c11459f4d681da77b92b5b62daabefb85c628d612d19da099755f2143a882"
+
+# Límites de ejecución del agente
+MAX_ITER = 6
+MAX_STEPS_ESPECIALISTA = 3
