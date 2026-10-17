@@ -10,3 +10,4 @@ pypdf
 pandas
 requests
 fonttools
+langgraph
