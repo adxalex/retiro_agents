@@ -15,7 +15,7 @@ def _configure_api()->str:
 def _error_response(error:str,*,response=None)->dict:
     return {'response':response,'error':error}
 
-def _search_endpoint(endpoint:str)->list|dict:
+def _search_endpoint(endpoint:str)->list:
     """Obtener datos según el endpoint (observaciones, previsiones y avisos)"""
     api_key=_configure_api()
     resp=requests.get(
@@ -43,30 +43,30 @@ def _search_endpoint(endpoint:str)->list|dict:
             raise ValueError(
                 f"Rspuesta JSON invalida consulta datos en el endpoint {endpoint}"
             ) from e
-        if isinstance(resp_json,(dict,list)):
+        if isinstance(resp_json,(list)):
             return resp_json
         raise ValueError (
             f"Formato de datos inesperado en el endpoint {endpoint}"
         )
     raise ValueError ("Respuesta inseperada AEMET")
 
-def _get_observaciones()->list|dict:
+def _get_observaciones()->list:
     """Obtener observaciones"""
     endpoint=EP_OBSERVACIONES
     return _search_endpoint(endpoint=endpoint)
 
-def _get_previsiones()->list|dict:
+def _get_previsiones()->list:
     """Obtener previsiones"""
     endpoint=EP_PREVISIONES
     return _search_endpoint(endpoint=endpoint)
 
-def _get_avisos()->list|dict:
+def _get_avisos()->list:
     """Obtener avisos"""
     endpoint=EP_AVISOS
     return _search_endpoint(endpoint=endpoint)
 
 @tool
-def  consultar_meteorologia_retiro()->dict:
+def  api_dominio()->tuple[dict,str|None]:
     """ Consulta la meteorología de El Retiro, Madrid. 
     
     Siempre obtiene las observaciones meteorológicas. 
@@ -80,5 +80,22 @@ def  consultar_meteorologia_retiro()->dict:
     Returns: 
         Diccionario con observaciones, previsiones, avisos y metadatos sobre el origen de los datos. 
     """
-
+    data={
+        'observaciones':None,
+        'previsiones': None,
+        'avisos': None,
+        'origen':None
+    }
+    try:
+        data['observaciones']=_get_observaciones()[0]
+        data['previsiones']=_get_previsiones()[0]
+        data['avisos']=_get_avisos()[0]
+        data['origen']='aemet'
+        return data,None
+    except Exception as e:
+        data['observaciones']=None
+        data['previsiones']=None
+        data['avisos']=None
+        data['origen']='respaldo'
+        return data,str(e)
     
