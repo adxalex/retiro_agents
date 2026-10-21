@@ -1,5 +1,5 @@
 import json 
-from config import URL_AEMET,TIEMPO_MAXIMO,EP_AVISOS,EP_OBSERVACIONES,EP_PREVISIONES
+from config import URL_AEMET,TIEMPO_MAXIMO,EP_AVISOS,EP_OBSERVACIONES,EP_PREVISIONES,FALLBACK_JSON
 from dotenv import load_dotenv
 from getpass import getpass
 import os,requests
@@ -7,13 +7,14 @@ from langchain_core.tools import tool
 
 def _configure_api()->str:
     load_dotenv()
-    if not os.getenv('AEMET_API_KEY'):
-        os.environ['AEMET_API_KEY']=getpass('AEMET_API_KEY: ')
+    # if not os.getenv('AEMET_API_KEY'):
+    #     os.environ['AEMET_API_KEY']=getpass('AEMET_API_KEY: ')
     api_key=os.getenv('AEMET_API_KEY')
+    if not api_key:
+        raise ValueError(
+            "No se ha configurado la variable de entorno AEMET_API_KEY."
+        )
     return api_key
-
-def _error_response(error:str,*,response=None)->dict:
-    return {'response':response,'error':error}
 
 def _search_endpoint(endpoint:str)->list:
     """Obtener datos según el endpoint (observaciones, previsiones y avisos)"""
@@ -43,59 +44,101 @@ def _search_endpoint(endpoint:str)->list:
             raise ValueError(
                 f"Rspuesta JSON invalida consulta datos en el endpoint {endpoint}"
             ) from e
-        if isinstance(resp_json,(list)):
+        if isinstance(resp_json,list):
             return resp_json
         raise ValueError (
             f"Formato de datos inesperado en el endpoint {endpoint}"
         )
     raise ValueError ("Respuesta inseperada AEMET")
 
-def _get_observaciones()->list:
+def _get_observaciones()->dict:
     """Obtener observaciones"""
-    endpoint=EP_OBSERVACIONES
-    return _search_endpoint(endpoint=endpoint)
+    data=_search_endpoint(endpoint=EP_OBSERVACIONES)
+    if not data:
+        raise ValueError("No se han devuelto observaciones.")
+    if not isinstance(data[0], dict):
+        raise ValueError("El formato de las observaciones no es válido.")
+    return data[0]
 
-def _get_previsiones()->list:
+def _get_observaciones_fallback() -> dict:
+    """Obtiene las observaciones del archivo JSON de fallback."""
+    with open(FALLBACK_JSON, "r", encoding="utf-8") as file:
+        data = json.load(file)
+    if not isinstance(data, dict):
+        raise ValueError("El JSON de fallback debe contener un diccionario.")
+    return data
+
+def _get_previsiones()->dict:
     """Obtener previsiones"""
-    endpoint=EP_PREVISIONES
-    return _search_endpoint(endpoint=endpoint)
+    data=_search_endpoint(endpoint=EP_PREVISIONES)
+    if not data:
+        raise ValueError("No se han devuelto previsiones.")
+    if not isinstance(data[0], dict):
+        raise ValueError("El formato de las previsiones no es válido.")
+    return data[0]
 
-def _get_avisos()->list:
+def _get_avisos()->dict:
     """Obtener avisos"""
-    endpoint=EP_AVISOS
-    return _search_endpoint(endpoint=endpoint)
+    data=_search_endpoint(endpoint=EP_AVISOS)
+    if not data:
+        raise ValueError("No se han devuelto avisos.")
+    if not isinstance(data[0], dict):
+        raise ValueError("El formato de los avisos no es válido.")
+    return data[0]
 
 @tool
-def  api_dominio()->tuple[dict,str|None]:
-    """ Consulta la meteorología de El Retiro, Madrid. 
-    
-    Siempre obtiene las observaciones meteorológicas. 
-    
-    Si falla la api, recupera las observaciones desde el JSON de fallback configurado en config.py. 
-        
-    Si no falla la api, también obtiene las previsiones y los avisos meteorológicos.
-    
-    En ese caso, las previsiones y los avisos quedan como no disponibles. 
-    
-    Returns: 
-        Diccionario con observaciones, previsiones, avisos y metadatos sobre el origen de los datos. 
-    """
+def  api_dominio()->dict:
+    """Consulta la meteorología de El Retiro, Madrid.
+
+Obtiene las observaciones mediante AEMET. Si falla la consulta,
+intenta recuperarlas del archivo JSON de respaldo configurado
+en config.py.
+
+Si las observaciones se obtienen correctamente de AEMET, intenta
+consultar también las previsiones y los avisos meteorológicos.
+
+Los errores de previsiones y avisos se gestionan por separado,
+sin perder los datos obtenidos correctamente.
+
+Returns:
+    Diccionario con los datos meteorológicos, el origen de las
+    observaciones y los posibles errores.
+"""
     data={
         'observaciones':None,
         'previsiones': None,
         'avisos': None,
         'origen':None
     }
+    error=[]
     try:
-        data['observaciones']=_get_observaciones()[0]
-        data['previsiones']=_get_previsiones()[0]
-        data['avisos']=_get_avisos()[0]
+        data['observaciones']=_get_observaciones()
         data['origen']='aemet'
-        return data,None
     except Exception as e:
-        data['observaciones']=None
+        error.append(f"Error en AEMET: {e}.")
+        try:
+            data['observaciones'] = _get_observaciones_fallback()
+            data['origen'] = 'respaldo'
+        except Exception as fallback_error:
+            error.append(f"Error en el fallback: {fallback_error}.")
+        return {
+            'data': data,
+            'error': "\n".join(error) or None
+        }               
+    try:
+        data['previsiones']=_get_previsiones()
+    except Exception as previsiones_error:
+        error.append(f"Error en previsiones: {previsiones_error}.")
         data['previsiones']=None
+
+    try:
+        data['avisos']=_get_avisos()
+    except Exception as avisos_error:
+        error.append(f"Error en avisos: {avisos_error}.")
         data['avisos']=None
-        data['origen']='respaldo'
-        return data,str(e)
+    
+    return {
+        'data':data,
+        'error':"\n".join(error) or None
+    }
     

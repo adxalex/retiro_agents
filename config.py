@@ -1,6 +1,7 @@
 """Configuracion centralizada del sistema RAG - Parque de El Retiro."""
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 
@@ -8,6 +9,8 @@ load_dotenv()
 DATA_DIR = "data"
 CHROMA_DIR = os.getenv("CHROMA_DIR", "chroma")
 COLLECTION_NAME = "retiro_madrid"
+PROYECT_DIR=Path('..').resolve()
+FALLBACK_JSON=PROYECT_DIR/'data'/'src'/'tools'/'fallback'/'aemet.json'
 
 # Modelos estables seleccionados para el MVP.
 # gemini-embedding-001 devuelve un vector por texto y mantiene compatibilidad
@@ -60,13 +63,13 @@ LOG_FILE = os.getenv("RAG_LOG_FILE", "output/consultas.jsonl")
 # --- Contexto de visita (AEMET y horario del parque) ---
 ESTACION_RETIRO = "3195"  # estación AEMET Madrid-Retiro
 CODIGO_MUNICIPAL="28079"
-AREA_ALERTA="61"
+AREA_ALERTA="72"
 
 URL_AEMET = "https://opendata.aemet.es/opendata/api/"
 
 EP_OBSERVACIONES= f"observacion/convencional/datos/estacion/{ESTACION_RETIRO}"
 EP_PREVISIONES= f"prediccion/especifica/municipio/horaria/{CODIGO_MUNICIPAL}"
-EP_AVISOS=f"avisos_acp/ultimoelaborado/area{AREA_ALERTA}"
+EP_AVISOS=f"avisos_cap/ultimoelaborado/area/{AREA_ALERTA}"
 
 TIEMPO_MAXIMO = 8  # segundos de espera por petición a AEMET
 
