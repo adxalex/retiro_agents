@@ -59,9 +59,15 @@ LOG_FILE = os.getenv("RAG_LOG_FILE", "output/consultas.jsonl")
 
 # --- Contexto de visita (AEMET y horario del parque) ---
 ESTACION_RETIRO = "3195"  # estación AEMET Madrid-Retiro
-URL_AEMET = (
-    "https://opendata.aemet.es/opendata/api/observacion/convencional/datos/estacion/"
-)
+CODIGO_MUNICIPAL="28079"
+AREA_ALERTA="61"
+
+URL_AEMET = "https://opendata.aemet.es/opendata/api/"
+
+EP_OBSERVACIONES= f"observacion/convencional/datos/estacion/{ESTACION_RETIRO}"
+EP_PREVISIONES= f"prediccion/especifica/municipio/horaria/{CODIGO_MUNICIPAL}"
+EP_AVISOS=f"avisos_acp/ultimoelaborado/area{AREA_ALERTA}"
+
 TIEMPO_MAXIMO = 8  # segundos de espera por petición a AEMET
 
 # Umbrales de viento del protocolo del Retiro 2026

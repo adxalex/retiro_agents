@@ -1,5 +1,5 @@
 import json 
-from config import URL_AEMET,TIEMPO_MAXIMO
+from config import URL_AEMET,TIEMPO_MAXIMO,EP_AVISOS,EP_OBSERVACIONES,EP_PREVISIONES
 from dotenv import load_dotenv
 from getpass import getpass
 import os,requests
@@ -14,12 +14,12 @@ def _configure_api()->str:
 def _error_response(error:str,*,response=None)->dict:
     return {'response':response,'error':error}
 
-def _search_api()->list|dict:
-    """Obtener datos """
+def _search_endpoint(endpoint:str)->list|dict:
+    """Obtener datos según el endpoint (observaciones, previsiones y avisos)"""
     api_key=_configure_api()
     try:
         resp=requests.get(
-            URL_AEMET,
+            f"{URL_AEMET}{endpoint.lstrip('/')}",
             params={"api_key":api_key},
             timeout=TIEMPO_MAXIMO,
         )
@@ -43,4 +43,19 @@ def _search_api()->list|dict:
         return meta
     else:
         return {'response':resp,'error':'Invalid metadata type'}
+
+def _get_observaciones()->list|dict:
+    """Obtener observaciones"""
+    endpoint=EP_OBSERVACIONES
+    return _search_endpoint(endpoint=endpoint)
+
+def _get_previsiones()->list|dict:
+    """Obtener previsiones"""
+    endpoint=EP_PREVISIONES
+    return _search_endpoint(endpoint=endpoint)
+
+def _get_avisos()->list|dict:
+    """Obtener avisos"""
+    endpoint=EP_AVISOS
+    return _search_endpoint(endpoint=endpoint)
     
