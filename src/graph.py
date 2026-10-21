@@ -107,6 +107,24 @@ def _evento(
         "preview": str(preview)[:200],
     }
 
+def _args_para_traza(args: dict) -> dict:
+    """Resume los argumentos de imagen para mantener la traza serializable."""
+    args_traza = dict(args)
+
+    imagen = args_traza.get("imagen")
+    if isinstance(imagen, dict):
+        bytes_imagen = imagen.get("bytes")
+        args_traza["imagen"] = {
+            "mime": imagen.get("mime"),
+            "bytes_len": (
+                len(bytes_imagen)
+                if isinstance(bytes_imagen, bytes)
+                else None
+            ),
+        }
+
+    return args_traza
+
 
 def _ejecutar_tool(nombre: str, args: dict) -> dict:
     """Ejecuta una herramienta sin propagar excepciones."""
@@ -120,6 +138,14 @@ def _ejecutar_tool(nombre: str, args: dict) -> dict:
                 "La herramienta debe devolver un diccionario."
             )
 
+        # La tool recibe los argumentos originales.
+        # Solo se resumen los argumentos que aparecen en la traza.
+        evento_traza = resultado.get("traza")
+        if isinstance(evento_traza, dict):
+            evento_traza["args"] = _args_para_traza(
+                evento_traza.get("args") or args
+            )
+
         return resultado
 
     except Exception as exc:
@@ -131,7 +157,7 @@ def _ejecutar_tool(nombre: str, args: dict) -> dict:
             "traza": _evento(
                 "tool",
                 nombre,
-                args,
+                _args_para_traza(args),
                 "error",
                 str(exc),
             ),
@@ -464,7 +490,8 @@ def build_graph(
 
         # Hora y contexto temporal.
         nombre_tool = "hora_actual"
-        resultado = ejecutar(nombre_tool, {})
+        argumentos = {}
+        resultado = ejecutar(nombre_tool, argumentos)
         data = resultado.get("data") or {}
 
         if resultado.get("status") == "ok":
@@ -475,19 +502,30 @@ def build_graph(
                 f"Error: {resultado.get('error') or 'desconocido'}"
             )
 
-        eventos.append(
-            resultado.get("traza") or _evento(
+        evento_traza = resultado.get("traza")
+
+        if isinstance(evento_traza, dict):
+            evento_traza = {
+                **evento_traza,
+                "args": _args_para_traza(
+                    evento_traza.get("args") or argumentos
+                ),
+            }
+        else:
+            evento_traza = _evento(
                 "tool",
                 nombre_tool,
-                {},
+                _args_para_traza(argumentos),
                 resultado.get("status", "error"),
                 str(data),
             )
-        )
+
+        eventos.append(evento_traza)
 
         # Contexto externo, por ejemplo meteorología.
         nombre_tool = "api_dominio"
-        resultado = ejecutar(nombre_tool, {})
+        argumentos = {}
+        resultado = ejecutar(nombre_tool, argumentos)
         data = resultado.get("data") or {}
 
         if resultado.get("status") == "ok":
@@ -498,18 +536,29 @@ def build_graph(
                 f"Error: {resultado.get('error') or 'desconocido'}"
             )
 
-        eventos.append(
-            resultado.get("traza") or _evento(
+        evento_traza = resultado.get("traza")
+
+        if isinstance(evento_traza, dict):
+            evento_traza = {
+                **evento_traza,
+                "args": _args_para_traza(
+                    evento_traza.get("args") or argumentos
+                ),
+            }
+        else:
+            evento_traza = _evento(
                 "tool",
                 nombre_tool,
-                {},
+                _args_para_traza(argumentos),
                 resultado.get("status", "error"),
                 str(data),
             )
-        )
+
+        eventos.append(evento_traza)
 
         # La imagen es opcional.
         imagen = estado.get("imagen")
+
         if imagen:
             nombre_tool = "describir_imagen"
             argumentos = {"imagen": imagen}
@@ -524,17 +573,26 @@ def build_graph(
                     f"Error: {resultado.get('error') or 'desconocido'}"
                 )
 
-            eventos.append(
-                resultado.get("traza") or _evento(
+            evento_traza = resultado.get("traza")
+
+            if isinstance(evento_traza, dict):
+                evento_traza = {
+                    **evento_traza,
+                    "args": _args_para_traza(
+                        evento_traza.get("args") or argumentos
+                    ),
+                }
+            else:
+                evento_traza = _evento(
                     "tool",
                     nombre_tool,
-                    argumentos,
+                    _args_para_traza(argumentos),
                     resultado.get("status", "error"),
                     str(data),
                 )
-            )
 
-        
+            eventos.append(evento_traza)
+
         contexto_original = "\n".join(resultados)
 
         contexto = (
@@ -732,7 +790,7 @@ def build_graph(
             # propuesta de visita; no modifica sistemas externos.
             evento = _evento(
                 "hitl",
-                "aplicar",
+                "aprobar",
                 {
                     "comentario": comentario,
                     "numero_pasos": len(plan),
@@ -769,7 +827,7 @@ def build_graph(
         # Sin aprobación explícita, nunca se completa el plan.
         evento = _evento(
             "hitl",
-            "aplicar",
+            "aprobar",
             {},
             "blocked",
             "No existe aprobación humana explícita.",
