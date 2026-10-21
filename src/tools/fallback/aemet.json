@@ -1,0 +1,10 @@
+{
+  "estacion": "MADRID RETIRO",
+  "hora_utc": "2026-10-18T09:00:00+0000",
+  "temperatura_c": 11.1,
+  "humedad_pct": 80.0,
+  "precipitacion_mm": 0.1,
+  "viento_kmh": 25.2,
+  "racha_kmh": 51.1,
+  "fuente": "AEMET, estación meteorológica del Retiro"
+}
