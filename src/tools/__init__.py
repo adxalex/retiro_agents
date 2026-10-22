@@ -24,7 +24,7 @@ def args_validation(nombre,args=None):
             ruta=IMAGE_DEFAULT_PATH
             mime = "image/png" if ruta.suffix.lower() == ".png" else "image/jpeg"
             bytes= ruta.read_bytes()
-            return{'imagen':[bytes,mime]}
+            return{'imagen':{'bytes':bytes,'mime':mime}}
         try:
             mime=imagen.get('mime')
         except Exception:
@@ -35,7 +35,7 @@ def args_validation(nombre,args=None):
         except Exception:
             ruta=IMAGE_DEFAULT_PATH
             bytes=ruta.read_bytes()
-        return{'imagen':[bytes,mime]}
+        return{'imagen':{'bytes':bytes,'mime':mime}}
     if nombre =='rag_ask':
         return {"pregunta": str(args.get("pregunta") or "").strip()}
     if nombre =='hora_actual':
