@@ -91,3 +91,11 @@ MENSAJE_ABSTENCION = (
 INDEX_URL = "https://github.com/adxalex/retiro_rag/releases/download/index-v1/chroma_retiro_madrid.zip"
 # SHA-256 esperado de chroma_retiro_madrid.zip.
 INDEX_SHA256 = "176c11459f4d681da77b92b5b62daabefb85c628d612d19da099755f2143a882"
+
+# Límites de ejecución del agente
+MAX_ITER = 6
+MAX_STEPS_ESPECIALISTA = 3
+
+# --- Interfaz Streamlit del agente ---
+IMAGEN_MAX_BYTES = 5 * 1024 * 1024  # 5 MB; el valor exacto se acepta
+IMAGEN_MIME_PERMITIDOS = ("image/png", "image/jpeg")
