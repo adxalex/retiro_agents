@@ -10,7 +10,9 @@ DATA_DIR = "data"
 CHROMA_DIR = "chroma"
 COLLECTION_NAME = "retiro_madrid"
 PROYECT_DIR=Path('..').resolve()
-FALLBACK_JSON=PROYECT_DIR/'data'/'src'/'tools'/'fallback'/'aemet.json'
+FALLBACK_JSON=PROYECT_DIR/'src'/'tools'/'fallback'/'aemet.json'
+IMAGE_DEFAULT_NAME='Historia_Retiro.png'
+IMAGE_DEFAULT_PATH=PROYECT_DIR/'src'/'tools'/'fallback'/IMAGE_DEFAULT_NAME
 
 # Modelos estables seleccionados para el MVP.
 # gemini-embedding-001 devuelve un vector por texto y mantiene compatibilidad
