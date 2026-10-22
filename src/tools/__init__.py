@@ -4,7 +4,7 @@ from src.tools.rag_tool import rag_ask
 from src.tools.hora_actual import hora_actual
 from datetime import datetime
 import copy
-from config import IMAGEN_DEFAULT_PATH
+from config import IMAGE_DEFAULT_PATH
 
 TOOL_REGISTRY={
     'api_dominio':api_dominio,
@@ -21,19 +21,19 @@ def args_validation(nombre,args=None):
         try:
             imagen=args.get('imagen')
         except Exception:
-            ruta=IMAGEN_DEFAULT_PATH
+            ruta=IMAGE_DEFAULT_PATH
             mime = "image/png" if ruta.suffix.lower() == ".png" else "image/jpeg"
             bytes= ruta.read_bytes()
             return{'imagen':[bytes,mime]}
         try:
             mime=imagen.get('mime')
         except Exception:
-             ruta=IMAGEN_DEFAULT_PATH
+             ruta=IMAGE_DEFAULT_PATH
              mime = "image/png" if ruta.suffix.lower() == ".png" else "image/jpeg"
         try:
             bytes=imagen.get('bytes')
         except Exception:
-            ruta=IMAGEN_DEFAULT_PATH
+            ruta=IMAGE_DEFAULT_PATH
             bytes=ruta.read_bytes()
         return{'imagen':[bytes,mime]}
     if nombre =='rag_ask':
