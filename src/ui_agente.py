@@ -14,6 +14,8 @@ AVISO_PLAN_NO_COMPLETADO = "El plan no se ha completado."
 MENSAJE_PLAN_APROBADO = "Plan aprobado"
 MENSAJE_PLAN_RECHAZADO = "Plan rechazado, puedes hacer otra petición"
 
+CAMPOS_TRAZA = ("ts", "origen", "nombre", "status", "preview")
+
 
 def nueva_sesion() -> dict:
     """Crea el estado de una conversación nueva."""
@@ -73,6 +75,39 @@ def pendiente(sesion: dict) -> bool:
     """Indica si el agente tiene un plan pendiente de decisión."""
     ultimo = sesion.get("ultimo")
     return bool(ultimo and ultimo.get("pendiente_aprobacion"))
+
+
+def filas_traza(traza: list) -> list[dict]:
+    """Reduce cada evento de traza a los campos que muestra el panel."""
+    return [
+        {campo: evento.get(campo) or "" for campo in CAMPOS_TRAZA}
+        for evento in traza or []
+    ]
+
+
+def comentario_hitl(traza: list) -> str | None:
+    """Comentario del último evento HITL de la traza, si no está vacío."""
+    eventos_hitl = [e for e in traza or [] if e.get("origen") == "hitl"]
+    if not eventos_hitl:
+        return None
+    args = eventos_hitl[-1].get("args")
+    if not isinstance(args, dict):
+        return None
+    comentario = (args.get("comentario") or "").strip()
+    return comentario or None
+
+
+def estado_depuracion(sesion: dict) -> dict:
+    """Datos del panel de depuración a partir del último resultado."""
+    ultimo = sesion.get("ultimo") or {}
+    traza = ultimo.get("traza") or []
+    return {
+        "thread_id": sesion["thread_id"],
+        "pendiente_aprobacion": bool(ultimo.get("pendiente_aprobacion")),
+        "done": bool(ultimo.get("done")),
+        "filas": filas_traza(traza),
+        "comentario": comentario_hitl(traza),
+    }
 
 
 def enviar_turno(

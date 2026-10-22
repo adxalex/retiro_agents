@@ -16,7 +16,7 @@
       Hecho cuando: en verde `test_mensajes_en_orden_cronologico`, `test_enviar_turno_llama_con_thread_id_activo`, `test_texto_vacio_no_llama_al_agente`, `test_respuesta_no_vacia_se_anade`, `test_respuesta_y_plan_vacios_no_anaden_mensaje` y `test_plan_se_guarda_como_lista` de `tests/test_ui_agente.py`.
 - [x] T5. Añadir `llamar_seguro`, `registrar` (sustituye `ultimo`) y `pendiente(sesion)`. Los errores y las excepciones del agente se convierten en mensajes de aviso. Tests primero. (RF-7, RF-17, RF-30, RF-36, RF-45)
       Hecho cuando: en verde `test_error_se_muestra_como_aviso`, `test_excepcion_del_agente_se_convierte_en_aviso`, `test_error_plan_pendiente_como_aviso`, `test_error_plan_pendiente_no_duplica_respuesta`, `test_traza_se_reemplaza`, `test_chat_bloqueado_con_plan_pendiente` y `test_estado_solo_desde_banderas` de `tests/test_ui_agente.py`.
-- [ ] T6. Implementar `decidir(sesion, aprobado, comentario, aprobar)`:
+- [x] T6. Implementar `decidir(sesion, aprobado, comentario, aprobar)`:
       - Muestra "Plan aprobado" solo si `done` es verdadero y no hay error.
       - Muestra "Plan rechazado, puedes hacer otra petición" si se rechaza sin error.
       - En cualquier otro caso añade un aviso.

@@ -396,6 +396,80 @@ def test_turno_con_excepcion_deja_chat_libre(sesion):
     assert ui_agente.pendiente(sesion) is False
 
 
+def evento(origen, nombre, args=None, status="ok", preview=""):
+    """Evento de traza con la forma del contrato."""
+    return {"ts": "2026-10-22T10:00:00+02:00", "origen": origen, "nombre": nombre,
+            "args": args if args is not None else {}, "status": status,
+            "preview": preview}
+
+
+def test_filas_traza_campos_y_orden():
+    traza = [
+        evento("supervisor", "normas", {"pregunta": "x"}, "ok", "Ruta elegida"),
+        evento("tool", "rag_ask", {"pregunta": "x"}, "ok", "Respuesta"),
+        {"origen": "hitl", "nombre": "pausa"},
+    ]
+
+    filas = ui_agente.filas_traza(traza)
+
+    assert [list(f) for f in filas] == [
+        ["ts", "origen", "nombre", "status", "preview"]] * 3
+    assert [f["nombre"] for f in filas] == ["normas", "rag_ask", "pausa"]
+    assert filas[0]["preview"] == "Ruta elegida"
+    assert filas[2] == {"ts": "", "origen": "hitl", "nombre": "pausa",
+                        "status": "", "preview": ""}
+    assert ui_agente.filas_traza([]) == []
+
+
+def test_comentario_hitl_ultimo_evento():
+    traza = [
+        evento("hitl", "pausa", {"numero_pasos": 2}, "pending"),
+        evento("supervisor", "entorno"),
+        evento("hitl", "aprobar", {"comentario": "Prefiero el estanque"}),
+    ]
+
+    assert ui_agente.comentario_hitl(traza) == "Prefiero el estanque"
+
+
+@pytest.mark.parametrize("traza", [
+    [],
+    [evento("supervisor", "normas", {"comentario": "no es hitl"})],
+    [evento("hitl", "rechazar", {"comentario": ""})],
+    [evento("hitl", "rechazar", {"comentario": "   "})],
+    [evento("hitl", "rechazar", {})],
+    [{"origen": "hitl", "nombre": "rechazar", "args": None}],
+    # Solo cuenta el último evento hitl.
+    [evento("hitl", "rechazar", {"comentario": "antiguo"}),
+     evento("hitl", "pausa", {"numero_pasos": 1}, "pending")],
+])
+def test_comentario_hitl_vacio_no_se_muestra(traza):
+    assert ui_agente.comentario_hitl(traza) is None
+
+
+def test_estado_depuracion(sesion, procesar_falso):
+    inicial = ui_agente.estado_depuracion(sesion)
+    assert inicial == {
+        "thread_id": sesion["thread_id"],
+        "pendiente_aprobacion": False,
+        "done": False,
+        "filas": [],
+        "comentario": None,
+    }
+
+    traza = [evento("hitl", "pausa", {"numero_pasos": 1}, "pending", "Plan pendiente")]
+    procesar_falso.respuestas = [
+        {"respuesta": "Propuesta", "plan": ["Paso"], "pendiente_aprobacion": True,
+         "traza": traza}]
+    ui_agente.enviar_turno(sesion, "Plan", None, None, procesar_falso)
+
+    estado = ui_agente.estado_depuracion(sesion)
+    assert estado["thread_id"] == sesion["thread_id"]
+    assert estado["pendiente_aprobacion"] is True
+    assert estado["done"] is False
+    assert estado["filas"] == ui_agente.filas_traza(traza)
+    assert estado["comentario"] is None
+
+
 def test_decision_usa_mismo_thread_id(sesion_con_plan, procesar_falso, aprobar_falso):
     ui_agente.decidir(sesion_con_plan, False, "", aprobar_falso)
 
