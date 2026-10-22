@@ -10,7 +10,7 @@
 ## Bloque 1 — MVP funcional
 - [x] T2. Añadir a `config.py` la sección "Interfaz Streamlit del agente" con `IMAGEN_MAX_BYTES = 5 * 1024 * 1024` e `IMAGEN_MIME_PERMITIDOS = ("image/png", "image/jpeg")`. Tests primero. (RF-10, RF-15)
       Hecho cuando: `pytest tests/test_ui_agente.py::test_config_limites_imagen` en verde.
-- [ ] T3. Crear `src/ui_agente.py` con `nueva_sesion()`: `thread_id` uuid4, `mensajes` vacíos, `ultimo=None` y `uploader_key=0`. Tests primero. (RF-38, RF-39)
+- [x] T3. Crear `src/ui_agente.py` con `nueva_sesion()`: `thread_id` uuid4, `mensajes` vacíos, `ultimo=None` y `uploader_key=0`. Tests primero. (RF-38, RF-39)
       Hecho cuando: `pytest tests/test_ui_agente.py::test_nueva_sesion_genera_thread_id_uuid4` en verde.
 - [ ] T4. Implementar `enviar_turno(sesion, texto, mime, datos, procesar)` para el caso sin imagen (`mime=datos=None`). Añade el mensaje de usuario, llama a `procesar` con el `thread_id` de la sesión y añade la respuesta y el plan del agente. No llama al agente si el texto está vacío. La validación de imagen llega en T10. Tests primero, con el doble `procesar_falso`. (RF-1, RF-2, RF-3, RF-5, RF-6, RF-39)
       Hecho cuando: en verde `test_mensajes_en_orden_cronologico`, `test_enviar_turno_llama_con_thread_id_activo`, `test_texto_vacio_no_llama_al_agente`, `test_respuesta_no_vacia_se_anade`, `test_respuesta_y_plan_vacios_no_anaden_mensaje` y `test_plan_se_guarda_como_lista` de `tests/test_ui_agente.py`.
