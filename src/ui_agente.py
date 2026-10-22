@@ -4,6 +4,11 @@ from typing import Callable
 
 ROL_USUARIO = "usuario"
 ROL_AGENTE = "agente"
+ROL_AVISO = "aviso"
+
+AVISO_ERROR_AGENTE = (
+    "El agente no ha podido procesar la petición. Inténtalo de nuevo."
+)
 
 
 def nueva_sesion() -> dict:
@@ -21,6 +26,43 @@ def _anadir(sesion: dict, rol: str, texto: str, plan: list | None = None) -> Non
     sesion["mensajes"].append({"rol": rol, "texto": texto, "plan": list(plan or [])})
 
 
+def _resultado_vacio(error: str | None = None) -> dict:
+    """Resultado con las claves del contrato y valores neutros."""
+    return {
+        "thread_id": "",
+        "respuesta": "",
+        "plan": [],
+        "pendiente_aprobacion": False,
+        "done": False,
+        "traza": [],
+        "error": error,
+    }
+
+
+def llamar_seguro(funcion: Callable[..., dict], *args) -> dict:
+    """Llama al agente y convierte cualquier fallo en un resultado con error."""
+    try:
+        resultado = funcion(*args)
+    except Exception:
+        return _resultado_vacio(AVISO_ERROR_AGENTE)
+    if not isinstance(resultado, dict):
+        return _resultado_vacio(AVISO_ERROR_AGENTE)
+    completo = _resultado_vacio()
+    completo.update(resultado)
+    return completo
+
+
+def registrar(sesion: dict, resultado: dict) -> None:
+    """Guarda el último resultado del agente, sustituyendo al anterior."""
+    sesion["ultimo"] = resultado
+
+
+def pendiente(sesion: dict) -> bool:
+    """Indica si el agente tiene un plan pendiente de decisión."""
+    ultimo = sesion.get("ultimo")
+    return bool(ultimo and ultimo.get("pendiente_aprobacion"))
+
+
 def enviar_turno(
     sesion: dict,
     texto: str,
@@ -34,9 +76,12 @@ def enviar_turno(
         return
 
     _anadir(sesion, ROL_USUARIO, texto)
-    resultado = procesar(texto, sesion["thread_id"], None)
+    resultado = llamar_seguro(procesar, texto, sesion["thread_id"], None)
+    registrar(sesion, resultado)
 
-    respuesta = resultado.get("respuesta") or ""
-    plan = resultado.get("plan") or []
+    respuesta = resultado["respuesta"] or ""
+    plan = resultado["plan"] or []
     if respuesta or plan:
         _anadir(sesion, ROL_AGENTE, respuesta, plan)
+    if resultado["error"]:
+        _anadir(sesion, ROL_AVISO, resultado["error"])

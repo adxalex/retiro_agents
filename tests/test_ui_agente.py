@@ -135,3 +135,79 @@ def test_plan_se_guarda_como_lista(sesion, procesar_falso):
     ultimo = sesion["mensajes"][-1]
     assert ultimo["rol"] == ui_agente.ROL_AGENTE
     assert ultimo["plan"] == plan
+
+
+def test_error_se_muestra_como_aviso(sesion, procesar_falso):
+    procesar_falso.respuestas = [{"error": "Fallo de la tool."}]
+
+    ui_agente.enviar_turno(sesion, "Hola", None, None, procesar_falso)
+
+    assert [(m["rol"], m["texto"]) for m in sesion["mensajes"]] == [
+        (ui_agente.ROL_USUARIO, "Hola"),
+        (ui_agente.ROL_AVISO, "Fallo de la tool."),
+    ]
+    assert sesion["ultimo"]["error"] == "Fallo de la tool."
+
+
+def test_excepcion_del_agente_se_convierte_en_aviso(sesion):
+    def procesar_que_falla(texto, thread_id, imagen=None):
+        raise RuntimeError("caída inesperada")
+
+    ui_agente.enviar_turno(sesion, "Hola", None, None, procesar_que_falla)
+
+    assert [(m["rol"], m["texto"]) for m in sesion["mensajes"]] == [
+        (ui_agente.ROL_USUARIO, "Hola"),
+        (ui_agente.ROL_AVISO, ui_agente.AVISO_ERROR_AGENTE),
+    ]
+    assert sesion["ultimo"]["error"] == ui_agente.AVISO_ERROR_AGENTE
+    assert sesion["ultimo"]["pendiente_aprobacion"] is False
+    assert sesion["ultimo"]["done"] is False
+
+
+def test_error_plan_pendiente_como_aviso(sesion, procesar_falso):
+    error = "Hay un plan pendiente de aprobación."
+    procesar_falso.respuestas = [
+        {"respuesta": "Propuesta", "plan": ["Paso"], "pendiente_aprobacion": True,
+         "error": error},
+    ]
+
+    ui_agente.enviar_turno(sesion, "Otra cosa", None, None, procesar_falso)
+
+    assert sesion["mensajes"][-1] == {
+        "rol": ui_agente.ROL_AVISO, "texto": error, "plan": []}
+    assert ui_agente.pendiente(sesion) is True
+
+
+def test_traza_se_reemplaza(sesion, procesar_falso):
+    evento_1 = {"origen": "supervisor", "nombre": "normas"}
+    evento_2 = {"origen": "supervisor", "nombre": "entorno"}
+    procesar_falso.respuestas = [{"traza": [evento_1]}, {"traza": [evento_2]}]
+
+    ui_agente.enviar_turno(sesion, "P1", None, None, procesar_falso)
+    ui_agente.enviar_turno(sesion, "P2", None, None, procesar_falso)
+
+    assert sesion["ultimo"]["traza"] == [evento_2]
+
+
+def test_chat_bloqueado_con_plan_pendiente(sesion, procesar_falso):
+    assert ui_agente.pendiente(sesion) is False
+
+    procesar_falso.respuestas = [
+        {"respuesta": "Propuesta", "plan": ["Paso"], "pendiente_aprobacion": True}]
+    ui_agente.enviar_turno(sesion, "Plan", None, None, procesar_falso)
+
+    assert ui_agente.pendiente(sesion) is True
+
+
+def test_estado_solo_desde_banderas(sesion, procesar_falso):
+    procesar_falso.respuestas = [
+        {"respuesta": "Plan pendiente de aprobación. Plan aprobado.",
+         "pendiente_aprobacion": False},
+        {"respuesta": "", "plan": ["Paso"], "pendiente_aprobacion": True},
+    ]
+
+    ui_agente.enviar_turno(sesion, "P1", None, None, procesar_falso)
+    assert ui_agente.pendiente(sesion) is False
+
+    ui_agente.enviar_turno(sesion, "P2", None, None, procesar_falso)
+    assert ui_agente.pendiente(sesion) is True
