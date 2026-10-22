@@ -4,7 +4,7 @@
 > En las comprobaciones manuales con `streamlit run app_agent.py` no se envía ningún mensaje salvo que se indique, para no gastar API.
 
 ## Requisito previo
-- [ ] T1. Traer a `feature/streamlit-ui` la PR #6 de `develop` (corrección del evento HITL `"aprobar"`, commit `a6159b7`). (Dependencia de la spec)
+- [x] T1. Traer a `feature/streamlit-ui` la PR #6 de `develop` (corrección del evento HITL `"aprobar"`, commit `a6159b7`). (Dependencia de la spec)
       Hecho cuando: `git branch --contains a6159b7` incluye `feature/streamlit-ui` y `pytest` sale en verde.
 
 ## Bloque 1 — MVP funcional
@@ -54,23 +54,22 @@
       - `pytest` sigue en verde.
 - [ ] T12. Implementar `ocultar_secretos(texto)`: enmascara los valores de `GEMINI_API_KEY`, `GOOGLE_API_KEY` y `AEMET_API_KEY` presentes en el entorno y el patrón `AIza…`. Se aplica en `registrar` a `respuesta`, `error`, `plan` y a `preview` y `args.comentario` de la traza. Tests primero, con `monkeypatch.setenv`. (RF-8)
       Hecho cuando: `pytest tests/test_ui_agente.py::test_ocultar_secretos_en_error_preview_y_respuesta` en verde.
-- [ ] T13. Ampliar `nueva_sesion(ids_previos)` para que genere un id distinto de los anteriores y deje mensajes, `ultimo` y uploader vacíos, sin llamar a `aprobar` aunque haya un plan pendiente. Tests primero. (RF-41, RF-42, RF-43)
+- [ ] T13. Ampliar `nueva_sesion(ids_previos=())`, con `ids_previos` opcional y vacío por defecto para que el test de T3 siga valiendo, para que genere un id distinto de los anteriores y deje mensajes, `ultimo` y uploader vacíos, sin llamar a `aprobar` aunque haya un plan pendiente. Tests primero. (RF-41, RF-42, RF-43)
       Hecho cuando: en verde `test_nueva_conversacion_genera_id_distinto`, `test_nueva_conversacion_vacia_estado` y `test_nueva_conversacion_con_plan_pendiente_no_decide`.
 - [ ] T14. Añadir a la sidebar de `app_agent.py` el botón "Nueva conversación", siempre habilitado. Crea una sesión nueva con los ids previos y vacía el campo de comentario. (RF-40, RF-42)
       Hecho cuando: con `streamlit run app_agent.py`, al pulsar "Nueva conversación" el `thread_id` del expander cambia, el chat queda vacío y `pytest` sigue en verde.
-
-## Bloque 3 — Tests de la app con AppTest
-- [ ] T15. Crear en `tests/test_app_agent.py` el fixture con `AppTest.from_file("app_agent.py")` y dobles de `src.agent.procesar_turno` y `src.agent.aprobar_plan` con `monkeypatch`, que cuentan llamadas. Añadir los tests de arranque y chat. (RF-1, RF-2, RF-5, RF-32, RF-38)
-      Hecho cuando: en verde `test_app_arranca_con_thread_id` y `test_app_chat_y_respuesta`.
-- [ ] T16. Añadir los tests de plan pendiente: caja de chat desactivada, aviso visible, botones habilitados solo con plan y ninguna llamada a `aprobar_plan` sin pulsar un botón. (RF-17, RF-18, RF-19, RF-20, RF-28)
-      Hecho cuando: en verde `test_app_plan_pendiente_bloquea_chat_y_avisa`, `test_app_botones_habilitados_solo_con_plan` y `test_app_sin_aprobacion_automatica`.
-- [ ] T17. Añadir los tests de decisión desde la sidebar: Aprobar y Rechazar llaman al doble con el comentario escrito, muestran el mensaje del sistema y reactivan el chat. (RF-21, RF-22, RF-23, RF-24, RF-26)
-      Hecho cuando: en verde `test_app_aprobar_desde_sidebar` y `test_app_rechazar_desde_sidebar`.
-- [ ] T18. Añadir los tests de "Nueva conversación" (visible, habilitado y cambia el `thread_id`) y del expander de depuración (existe y muestra `pendiente_aprobacion` y `done`). (RF-31, RF-33, RF-40, RF-41)
-      Hecho cuando: en verde `test_app_nueva_conversacion_siempre_visible` y `test_app_expander_depuracion`.
-- [ ] T19. Actualizar `AGENTS.md`: añadir `app_agent.py` y `src/ui_agente.py` al mapa del código y el comando `streamlit run app_agent.py` ⚠️ a Comandos. (Documentación)
+- [ ] T15. Actualizar `AGENTS.md`: añadir `app_agent.py` y `src/ui_agente.py` al mapa del código y el comando `streamlit run app_agent.py` ⚠️ a Comandos. (Documentación)
       Hecho cuando: `AGENTS.md` incluye las dos filas y el comando, y `pytest` sale en verde.
 
+## Bloque 3 — Tests de la app con AppTest
+- [ ] T16. Crear en `tests/test_app_agent.py` el fixture con `AppTest.from_file("app_agent.py")` y dobles de `src.agent.procesar_turno` y `src.agent.aprobar_plan` con `monkeypatch`, que cuentan llamadas. Añadir los tests de arranque y chat. (RF-1, RF-2, RF-5, RF-32, RF-38)
+      Hecho cuando: en verde `test_app_arranca_con_thread_id` y `test_app_chat_y_respuesta`.
+- [ ] T17. Añadir los tests de plan pendiente: caja de chat desactivada, aviso visible, botones habilitados solo con plan y ninguna llamada a `aprobar_plan` sin pulsar un botón. (RF-17, RF-18, RF-19, RF-20, RF-28)
+      Hecho cuando: en verde `test_app_plan_pendiente_bloquea_chat_y_avisa`, `test_app_botones_habilitados_solo_con_plan` y `test_app_sin_aprobacion_automatica`.
+- [ ] T18. Añadir los tests de decisión desde la sidebar: Aprobar y Rechazar llaman al doble con el comentario escrito, muestran el mensaje del sistema y reactivan el chat. (RF-21, RF-22, RF-23, RF-24, RF-26)
+      Hecho cuando: en verde `test_app_aprobar_desde_sidebar` y `test_app_rechazar_desde_sidebar`.
+- [ ] T19. Añadir los tests de "Nueva conversación" (visible, habilitado y cambia el `thread_id`) y del expander de depuración (existe y muestra `pendiente_aprobacion` y `done`). (RF-31, RF-33, RF-40, RF-41)
+      Hecho cuando: en verde `test_app_nueva_conversacion_siempre_visible` y `test_app_expander_depuracion`.
 ## Validación
 - [ ] T20. Validación final RF por RF (`/sdd-validar`), con las comprobaciones manuales de RF-4, RF-9, RF-11, RF-13 y RF-31 y la demo de los criterios de finalización. (Todos)
       Hecho cuando: `validacion.md` con veredicto "Sí".
