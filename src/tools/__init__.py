@@ -1,12 +1,14 @@
 from src.tools.aemet_api import api_dominio
 from src.tools.image_decrip import describir_imagen
+from src.tools.rag_tool import rag_ask
 from datetime import datetime
 import copy
 from config import IMAGEN_DEFAULT_PATH
 
 TOOL_REGISTRY={
     'api_dominio':api_dominio,
-    'describir_imagen':describir_imagen
+    'describir_imagen':describir_imagen,
+    'rag_ask':rag_ask
 }
 
 def args_validation(nombre,args=None):
@@ -32,6 +34,8 @@ def args_validation(nombre,args=None):
             ruta=IMAGEN_DEFAULT_PATH
             bytes=ruta.read_bytes()
         return{'imagen':[bytes,mime]}
+    if nombre =='rag_ask':
+        return {"pregunta": str(args.get("pregunta") or "").strip()}
 
 def ejecutar_tool(nombre,args=None):
     resultado={
