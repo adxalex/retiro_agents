@@ -1,15 +1,37 @@
 from src.tools.aemet_api import api_dominio
+from src.tools.image_decrip import describir_imagen
 from datetime import datetime
 import copy
+from config import IMAGEN_DEFAULT_PATH
 
 TOOL_REGISTRY={
-    'api_dominio':api_dominio
+    'api_dominio':api_dominio,
+    'describir_imagen':describir_imagen
 }
 
 def args_validation(nombre,args=None):
     args=args or {}
     if nombre == 'api_dominio':
         return {}
+    if nombre =='describir_imagen':
+        try:
+            imagen=args.get('imagen')
+        except Exception:
+            ruta=IMAGEN_DEFAULT_PATH
+            mime = "image/png" if ruta.suffix.lower() == ".png" else "image/jpeg"
+            bytes= ruta.read_bytes()
+            return{'imagen':[bytes,mime]}
+        try:
+            mime=imagen.get('mime')
+        except Exception:
+             ruta=IMAGEN_DEFAULT_PATH
+             mime = "image/png" if ruta.suffix.lower() == ".png" else "image/jpeg"
+        try:
+            bytes=imagen.get('bytes')
+        except Exception:
+            ruta=IMAGEN_DEFAULT_PATH
+            bytes=ruta.read_bytes()
+        return{'imagen':[bytes,mime]}
 
 def ejecutar_tool(nombre,args=None):
     resultado={
@@ -28,9 +50,14 @@ def ejecutar_tool(nombre,args=None):
         'preview':None
     }
     clean=args_validation(nombre,args)
+    new_result=copy.deepcopy(resultado)
+    new_traza=copy.deepcopy(traza)
+    if nombre not in TOOL_REGISTRY:
+        new_result['status']='blocked'
+        new_traza['status']='blocked'
+        new_result['traza']=new_traza
+        return new_result
     try:
-        new_result=copy.deepcopy(resultado)
-        new_traza=copy.deepcopy(traza)
         resp= TOOL_REGISTRY[nombre](**clean)
         if resp['error'] is None:
             new_result['status']='ok'
