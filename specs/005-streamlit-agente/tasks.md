@@ -8,7 +8,7 @@
       Hecho cuando: `git branch --contains a6159b7` incluye `feature/streamlit-ui` y `pytest` sale en verde.
 
 ## Bloque 1 — MVP funcional
-- [ ] T2. Añadir a `config.py` la sección "Interfaz Streamlit del agente" con `IMAGEN_MAX_BYTES = 5 * 1024 * 1024` e `IMAGEN_MIME_PERMITIDOS = ("image/png", "image/jpeg")`. Tests primero. (RF-10, RF-15)
+- [x] T2. Añadir a `config.py` la sección "Interfaz Streamlit del agente" con `IMAGEN_MAX_BYTES = 5 * 1024 * 1024` e `IMAGEN_MIME_PERMITIDOS = ("image/png", "image/jpeg")`. Tests primero. (RF-10, RF-15)
       Hecho cuando: `pytest tests/test_ui_agente.py::test_config_limites_imagen` en verde.
 - [ ] T3. Crear `src/ui_agente.py` con `nueva_sesion()`: `thread_id` uuid4, `mensajes` vacíos, `ultimo=None` y `uploader_key=0`. Tests primero. (RF-38, RF-39)
       Hecho cuando: `pytest tests/test_ui_agente.py::test_nueva_sesion_genera_thread_id_uuid4` en verde.
