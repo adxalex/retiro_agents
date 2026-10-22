@@ -5,10 +5,14 @@ from typing import Callable
 ROL_USUARIO = "usuario"
 ROL_AGENTE = "agente"
 ROL_AVISO = "aviso"
+ROL_SISTEMA = "sistema"
 
 AVISO_ERROR_AGENTE = (
     "El agente no ha podido procesar la petición. Inténtalo de nuevo."
 )
+AVISO_PLAN_NO_COMPLETADO = "El plan no se ha completado."
+MENSAJE_PLAN_APROBADO = "Plan aprobado"
+MENSAJE_PLAN_RECHAZADO = "Plan rechazado, puedes hacer otra petición"
 
 
 def nueva_sesion() -> dict:
@@ -87,3 +91,27 @@ def enviar_turno(
         _anadir(sesion, ROL_AGENTE, respuesta, plan)
     if resultado["error"]:
         _anadir(sesion, ROL_AVISO, resultado["error"])
+
+
+def decidir(
+    sesion: dict,
+    aprobado: bool,
+    comentario: str,
+    aprobar: Callable[..., dict],
+) -> None:
+    """Envía la decisión humana sobre el plan pendiente y la refleja en el chat."""
+    if not pendiente(sesion):
+        return
+
+    resultado = llamar_seguro(
+        aprobar, sesion["thread_id"], aprobado, (comentario or "").strip())
+    registrar(sesion, resultado)
+
+    if resultado["error"]:
+        _anadir(sesion, ROL_AVISO, resultado["error"])
+    elif aprobado and resultado["done"]:
+        _anadir(sesion, ROL_SISTEMA, MENSAJE_PLAN_APROBADO)
+    elif aprobado:
+        _anadir(sesion, ROL_AVISO, AVISO_PLAN_NO_COMPLETADO)
+    else:
+        _anadir(sesion, ROL_SISTEMA, MENSAJE_PLAN_RECHAZADO)

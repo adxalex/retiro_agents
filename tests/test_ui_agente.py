@@ -40,9 +40,36 @@ class AgenteFalso:
         return resultado(thread_id=thread_id, **datos)
 
 
+class AprobadorFalso:
+    """Doble de aprobar_plan que registra llamadas y devuelve datos fijos."""
+
+    def __init__(self):
+        self.llamadas = []
+        self.respuesta = {}
+
+    def __call__(self, thread_id, aprobado, comentario=""):
+        self.llamadas.append(
+            {"thread_id": thread_id, "aprobado": aprobado, "comentario": comentario})
+        return resultado(thread_id=thread_id, **self.respuesta)
+
+
 @pytest.fixture
 def procesar_falso():
     return AgenteFalso()
+
+
+@pytest.fixture
+def aprobar_falso():
+    return AprobadorFalso()
+
+
+@pytest.fixture
+def sesion_con_plan(sesion, procesar_falso):
+    """Sesión cuyo último turno ha dejado un plan pendiente."""
+    procesar_falso.respuestas = [
+        {"respuesta": "Propuesta", "plan": ["Paso 1"], "pendiente_aprobacion": True}]
+    ui_agente.enviar_turno(sesion, "Plan de visita", None, None, procesar_falso)
+    return sesion
 
 
 @pytest.fixture
@@ -226,3 +253,118 @@ def test_estado_solo_desde_banderas(sesion, procesar_falso):
 
     ui_agente.enviar_turno(sesion, "P2", None, None, procesar_falso)
     assert ui_agente.pendiente(sesion) is True
+
+
+def test_aprobar_llama_con_true_y_comentario(sesion_con_plan, aprobar_falso):
+    ui_agente.decidir(sesion_con_plan, True, "  Empezar por el estanque ", aprobar_falso)
+
+    assert aprobar_falso.llamadas == [{
+        "thread_id": sesion_con_plan["thread_id"],
+        "aprobado": True,
+        "comentario": "Empezar por el estanque",
+    }]
+
+
+def test_rechazar_llama_con_false_y_comentario(sesion_con_plan, aprobar_falso):
+    ui_agente.decidir(sesion_con_plan, False, "", aprobar_falso)
+
+    assert aprobar_falso.llamadas == [{
+        "thread_id": sesion_con_plan["thread_id"],
+        "aprobado": False,
+        "comentario": "",
+    }]
+
+
+def test_aprobacion_con_done_muestra_plan_aprobado(sesion_con_plan, aprobar_falso):
+    aprobar_falso.respuesta = {"done": True}
+
+    ui_agente.decidir(sesion_con_plan, True, "", aprobar_falso)
+
+    assert sesion_con_plan["mensajes"][-1] == {
+        "rol": ui_agente.ROL_SISTEMA,
+        "texto": ui_agente.MENSAJE_PLAN_APROBADO,
+        "plan": [],
+    }
+
+
+def test_rechazo_muestra_mensaje(sesion_con_plan, aprobar_falso):
+    ui_agente.decidir(sesion_con_plan, False, "", aprobar_falso)
+
+    assert sesion_con_plan["mensajes"][-1] == {
+        "rol": ui_agente.ROL_SISTEMA,
+        "texto": ui_agente.MENSAJE_PLAN_RECHAZADO,
+        "plan": [],
+    }
+
+
+def test_decision_conserva_mensajes(sesion_con_plan, aprobar_falso):
+    previos = [dict(m) for m in sesion_con_plan["mensajes"]]
+    aprobar_falso.respuesta = {"done": True}
+
+    ui_agente.decidir(sesion_con_plan, True, "", aprobar_falso)
+
+    assert sesion_con_plan["mensajes"][:len(previos)] == previos
+    assert len(sesion_con_plan["mensajes"]) == len(previos) + 1
+
+
+@pytest.mark.parametrize("aprobado", [True, False])
+def test_decision_desbloquea_chat(sesion_con_plan, aprobar_falso, aprobado):
+    aprobar_falso.respuesta = {"done": aprobado, "pendiente_aprobacion": False}
+
+    ui_agente.decidir(sesion_con_plan, aprobado, "", aprobar_falso)
+
+    assert ui_agente.pendiente(sesion_con_plan) is False
+
+
+def test_aprobacion_con_error_no_muestra_aprobado(sesion_con_plan, aprobar_falso):
+    aprobar_falso.respuesta = {"done": True, "error": "Fallo al aplicar."}
+
+    ui_agente.decidir(sesion_con_plan, True, "", aprobar_falso)
+
+    textos = [m["texto"] for m in sesion_con_plan["mensajes"]]
+    assert ui_agente.MENSAJE_PLAN_APROBADO not in textos
+    assert sesion_con_plan["mensajes"][-1]["rol"] == ui_agente.ROL_AVISO
+    assert sesion_con_plan["mensajes"][-1]["texto"] == "Fallo al aplicar."
+
+
+def test_aprobacion_sin_done_no_muestra_aprobado(sesion_con_plan, aprobar_falso):
+    aprobar_falso.respuesta = {"done": False}
+
+    ui_agente.decidir(sesion_con_plan, True, "", aprobar_falso)
+
+    textos = [m["texto"] for m in sesion_con_plan["mensajes"]]
+    assert ui_agente.MENSAJE_PLAN_APROBADO not in textos
+    assert sesion_con_plan["mensajes"][-1] == {
+        "rol": ui_agente.ROL_AVISO,
+        "texto": ui_agente.AVISO_PLAN_NO_COMPLETADO,
+        "plan": [],
+    }
+
+
+def test_turno_pendiente_no_llama_a_aprobar(
+        sesion, procesar_falso, aprobar_falso):
+    # Un turno que deja el plan pendiente no decide por su cuenta.
+    procesar_falso.respuestas = [
+        {"respuesta": "Propuesta", "plan": ["Paso"], "pendiente_aprobacion": True}]
+    ui_agente.enviar_turno(sesion, "Plan", None, None, procesar_falso)
+    assert aprobar_falso.llamadas == []
+
+    # Sin plan pendiente, decidir no llama al agente ni cambia el chat.
+    otra = ui_agente.nueva_sesion()
+    ui_agente.decidir(otra, True, "", aprobar_falso)
+    assert aprobar_falso.llamadas == []
+    assert otra["mensajes"] == []
+    assert otra["ultimo"] is None
+
+
+def test_mensajes_de_decision_textos_exactos():
+    assert ui_agente.MENSAJE_PLAN_APROBADO == "Plan aprobado"
+    assert ui_agente.MENSAJE_PLAN_RECHAZADO == (
+        "Plan rechazado, puedes hacer otra petición")
+
+
+def test_decision_usa_mismo_thread_id(sesion_con_plan, procesar_falso, aprobar_falso):
+    ui_agente.decidir(sesion_con_plan, False, "", aprobar_falso)
+
+    assert procesar_falso.llamadas[0]["thread_id"] == sesion_con_plan["thread_id"]
+    assert aprobar_falso.llamadas[0]["thread_id"] == sesion_con_plan["thread_id"]
