@@ -178,6 +178,21 @@ def test_error_plan_pendiente_como_aviso(sesion, procesar_falso):
     assert ui_agente.pendiente(sesion) is True
 
 
+def test_error_plan_pendiente_no_duplica_respuesta(sesion, procesar_falso):
+    error = "Hay un plan pendiente de aprobación."
+    procesar_falso.respuestas = [
+        {"respuesta": "Propuesta", "plan": ["Paso"], "pendiente_aprobacion": True,
+         "error": error},
+    ]
+
+    ui_agente.enviar_turno(sesion, "Otra cosa", None, None, procesar_falso)
+
+    assert [(m["rol"], m["texto"]) for m in sesion["mensajes"]] == [
+        (ui_agente.ROL_USUARIO, "Otra cosa"),
+        (ui_agente.ROL_AVISO, error),
+    ]
+
+
 def test_traza_se_reemplaza(sesion, procesar_falso):
     evento_1 = {"origen": "supervisor", "nombre": "normas"}
     evento_2 = {"origen": "supervisor", "nombre": "entorno"}

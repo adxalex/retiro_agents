@@ -81,7 +81,9 @@ def enviar_turno(
 
     respuesta = resultado["respuesta"] or ""
     plan = resultado["plan"] or []
-    if respuesta or plan:
+    # Con plan pendiente, el núcleo devuelve el pedido anterior: no se repite.
+    repetido = bool(resultado["error"] and resultado["pendiente_aprobacion"])
+    if (respuesta or plan) and not repetido:
         _anadir(sesion, ROL_AGENTE, respuesta, plan)
     if resultado["error"]:
         _anadir(sesion, ROL_AVISO, resultado["error"])

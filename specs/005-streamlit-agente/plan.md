@@ -71,7 +71,8 @@ enviar_turno(sesion, texto, mime, datos, procesar)      # mime/datos = None si n
     añadir {"usuario", texto}
     resultado = llamar_seguro(procesar, texto, sesion.thread_id, imagen)
     registrar(sesion, resultado)
-    si resultado.respuesta o resultado.plan: añadir {"agente", respuesta, plan}
+    si (resultado.respuesta o resultado.plan) y no (resultado.error y resultado.pendiente_aprobacion):
+        añadir {"agente", respuesta, plan}                 # con plan pendiente no se repite el pedido anterior
     si resultado.error: añadir {"aviso", error}            # incluye "plan pendiente" (RF-30)
     si imagen: sesion.uploader_key += 1                    # RF-13
 
