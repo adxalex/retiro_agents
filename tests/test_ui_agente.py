@@ -363,6 +363,39 @@ def test_mensajes_de_decision_textos_exactos():
         "Plan rechazado, puedes hacer otra petición")
 
 
+def test_decision_con_excepcion_mantiene_plan_pendiente(sesion_con_plan):
+    def aprobar_que_falla(thread_id, aprobado, comentario=""):
+        raise RuntimeError("caída inesperada")
+
+    ui_agente.decidir(sesion_con_plan, True, "", aprobar_que_falla)
+
+    assert ui_agente.pendiente(sesion_con_plan) is True
+    assert sesion_con_plan["mensajes"][-1] == {
+        "rol": ui_agente.ROL_AVISO,
+        "texto": ui_agente.AVISO_ERROR_AGENTE,
+        "plan": [],
+    }
+    textos = [m["texto"] for m in sesion_con_plan["mensajes"]]
+    assert ui_agente.MENSAJE_PLAN_APROBADO not in textos
+
+
+def test_decision_con_error_del_nucleo_usa_su_bandera(sesion_con_plan, aprobar_falso):
+    aprobar_falso.respuesta = {"error": "Fallo al aplicar.", "pendiente_aprobacion": False}
+
+    ui_agente.decidir(sesion_con_plan, True, "", aprobar_falso)
+
+    assert ui_agente.pendiente(sesion_con_plan) is False
+
+
+def test_turno_con_excepcion_deja_chat_libre(sesion):
+    def procesar_que_falla(texto, thread_id, imagen=None):
+        raise RuntimeError("caída inesperada")
+
+    ui_agente.enviar_turno(sesion, "Hola", None, None, procesar_que_falla)
+
+    assert ui_agente.pendiente(sesion) is False
+
+
 def test_decision_usa_mismo_thread_id(sesion_con_plan, procesar_falso, aprobar_falso):
     ui_agente.decidir(sesion_con_plan, False, "", aprobar_falso)
 

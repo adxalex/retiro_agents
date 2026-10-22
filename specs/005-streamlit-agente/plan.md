@@ -77,6 +77,7 @@ enviar_turno(sesion, texto, mime, datos, procesar)      # mime/datos = None si n
     si imagen: sesion.uploader_key += 1                    # RF-13
 
 decidir(sesion, aprobado, comentario, aprobar)
+    si no pendiente(sesion): return                        # sin plan pendiente no se llama al agente
     resultado = llamar_seguro(aprobar, sesion.thread_id, aprobado, comentario.strip())
     registrar(sesion, resultado)
     si resultado.error: añadir {"aviso", error}
@@ -84,8 +85,11 @@ decidir(sesion, aprobado, comentario, aprobar)
     si no, si aprobado: añadir {"aviso", "El plan no se ha completado."}   # RF-27
     si no: añadir {"sistema", "Plan rechazado, puedes hacer otra petición"}
 
-llamar_seguro(f, *args)      # defensa extra: el contrato dice que no lanza
+llamar_seguro(f, *args, pendiente_previo)      # defensa extra: el contrato dice que no lanza
     try f(*args) except Exception -> resultado vacío con error genérico
+        y pendiente_aprobacion = pendiente_previo  # RF-45/RF-17: la UI no inventa el estado
+    si f devuelve un dict, manda su bandera pendiente_aprobacion
+    (enviar_turno y decidir pasan pendiente_previo = pendiente(sesion))
 
 registrar(sesion, resultado)
     sesion.ultimo = resultado con textos pasados por ocultar_secretos   # RF-8, RF-36 (reemplaza)

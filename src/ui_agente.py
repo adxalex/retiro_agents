@@ -30,27 +30,35 @@ def _anadir(sesion: dict, rol: str, texto: str, plan: list | None = None) -> Non
     sesion["mensajes"].append({"rol": rol, "texto": texto, "plan": list(plan or [])})
 
 
-def _resultado_vacio(error: str | None = None) -> dict:
+def _resultado_vacio(
+    error: str | None = None, pendiente_aprobacion: bool = False
+) -> dict:
     """Resultado con las claves del contrato y valores neutros."""
     return {
         "thread_id": "",
         "respuesta": "",
         "plan": [],
-        "pendiente_aprobacion": False,
+        "pendiente_aprobacion": pendiente_aprobacion,
         "done": False,
         "traza": [],
         "error": error,
     }
 
 
-def llamar_seguro(funcion: Callable[..., dict], *args) -> dict:
-    """Llama al agente y convierte cualquier fallo en un resultado con error."""
+def llamar_seguro(
+    funcion: Callable[..., dict], *args, pendiente_previo: bool = False
+) -> dict:
+    """Llama al agente y convierte cualquier fallo en un resultado con error.
+
+    Si el agente no devuelve un dict, se conserva el último estado de
+    aprobación conocido en lugar de suponer uno nuevo.
+    """
     try:
         resultado = funcion(*args)
     except Exception:
-        return _resultado_vacio(AVISO_ERROR_AGENTE)
+        return _resultado_vacio(AVISO_ERROR_AGENTE, pendiente_previo)
     if not isinstance(resultado, dict):
-        return _resultado_vacio(AVISO_ERROR_AGENTE)
+        return _resultado_vacio(AVISO_ERROR_AGENTE, pendiente_previo)
     completo = _resultado_vacio()
     completo.update(resultado)
     return completo
@@ -80,7 +88,9 @@ def enviar_turno(
         return
 
     _anadir(sesion, ROL_USUARIO, texto)
-    resultado = llamar_seguro(procesar, texto, sesion["thread_id"], None)
+    resultado = llamar_seguro(
+        procesar, texto, sesion["thread_id"], None,
+        pendiente_previo=pendiente(sesion))
     registrar(sesion, resultado)
 
     respuesta = resultado["respuesta"] or ""
@@ -104,7 +114,8 @@ def decidir(
         return
 
     resultado = llamar_seguro(
-        aprobar, sesion["thread_id"], aprobado, (comentario or "").strip())
+        aprobar, sesion["thread_id"], aprobado, (comentario or "").strip(),
+        pendiente_previo=pendiente(sesion))
     registrar(sesion, resultado)
 
     if resultado["error"]:
