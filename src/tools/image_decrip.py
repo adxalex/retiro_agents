@@ -13,7 +13,7 @@ def configure_api()->str:
         raise ValueError ("Error: falta GEMINI_API_KEY")
 
 @tool
-def describir_imagen(imagen:dict) -> str:
+def describir_imagen(args:dict) -> str:
     """Describe la imagen de demo en español (texto visible, lugar, contexto).
 
     Sin ruta (o cadena vacía) usa assets/imagen_demo.jpg del proyecto.
@@ -23,7 +23,7 @@ def describir_imagen(imagen:dict) -> str:
         api_key=configure_api()
     except ValueError as e:
         return {'data':None,'error':str(e)}
-    
+    imagen=args.get('imagen')
     try:
         mime = imagen.get('mime')
         client = genai.Client(api_key=api_key)
