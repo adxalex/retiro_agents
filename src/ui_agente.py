@@ -11,6 +11,7 @@ AVISO_ERROR_AGENTE = (
     "El agente no ha podido procesar la petición. Inténtalo de nuevo."
 )
 AVISO_PLAN_NO_COMPLETADO = "El plan no se ha completado."
+AVISO_PLAN_PENDIENTE = "Hay un plan pendiente: apruébalo o recházalo para continuar"
 MENSAJE_PLAN_APROBADO = "Plan aprobado"
 MENSAJE_PLAN_RECHAZADO = "Plan rechazado, puedes hacer otra petición"
 
