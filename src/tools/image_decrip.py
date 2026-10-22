@@ -6,13 +6,13 @@ import config
 import os
 from google import genai
 from google.genai import types
-
+from config import LLM_MODEL
 def configure_api()->str:
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError ("Error: falta GEMINI_API_KEY")
 
-@tool
+# @tool
 def describir_imagen(args:dict) -> str:
     """Describe la imagen de demo en español (texto visible, lugar, contexto).
 
@@ -28,7 +28,7 @@ def describir_imagen(args:dict) -> str:
         mime = imagen.get('mime')
         client = genai.Client(api_key=api_key)
         out = client.models.generate_content(
-            model=config.GEMINI_MODEL,
+            model=LLM_MODEL,
             contents=[
                 types.Content(
                     role="user",
