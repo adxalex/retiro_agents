@@ -1,14 +1,10 @@
 import json 
-from config import URL_AEMET,TIEMPO_MAXIMO,EP_AVISOS,EP_OBSERVACIONES,EP_PREVISIONES,FALLBACK_JSON
+from config import BASE_URL_AEMET,TIEMPO_MAXIMO,EP_AVISOS,EP_OBSERVACIONES,EP_PREVISIONES,FALLBACK_JSON
 from dotenv import load_dotenv
-from getpass import getpass
 import os,requests
-from langchain_core.tools import tool
 
 def _configure_api()->str:
     load_dotenv()
-    # if not os.getenv('AEMET_API_KEY'):
-    #     os.environ['AEMET_API_KEY']=getpass('AEMET_API_KEY: ')
     api_key=os.getenv('AEMET_API_KEY')
     if not api_key:
         raise ValueError(
@@ -20,7 +16,7 @@ def _search_endpoint(endpoint:str)->list:
     """Obtener datos según el endpoint (observaciones, previsiones y avisos)"""
     api_key=_configure_api()
     resp=requests.get(
-        f"{URL_AEMET}{endpoint.lstrip('/')}",
+        f"{BASE_URL_AEMET}{endpoint.lstrip('/')}",
         params={"api_key":api_key},
         timeout=TIEMPO_MAXIMO,
     )
@@ -86,7 +82,6 @@ def _get_avisos()->dict:
         raise ValueError("El formato de los avisos no es válido.")
     return data[0]
 
-@tool
 def  api_dominio()->dict:
     """Consulta la meteorología de El Retiro, Madrid.
 
@@ -114,8 +109,7 @@ Returns:
     try:
         data['observaciones']=_get_observaciones()
         data['origen']='aemet'
-    except Exception as e:
-        error.append(f"Error en AEMET: {e}.")
+    except Exception:
         try:
             data['observaciones'] = _get_observaciones_fallback()
             data['origen'] = 'respaldo'
@@ -127,14 +121,12 @@ Returns:
         }               
     try:
         data['previsiones']=_get_previsiones()
-    except Exception as previsiones_error:
-        error.append(f"Error en previsiones: {previsiones_error}.")
+    except Exception:
         data['previsiones']=None
 
     try:
         data['avisos']=_get_avisos()
-    except Exception as avisos_error:
-        error.append(f"Error en avisos: {avisos_error}.")
+    except Exception:
         data['avisos']=None
     
     return {

@@ -59,7 +59,11 @@ ESTACION_RETIRO = "3195"  # estación AEMET Madrid-Retiro
 CODIGO_MUNICIPAL="28079"
 AREA_ALERTA="72"
 
-URL_AEMET = "https://opendata.aemet.es/opendata/api/"
+URL_AEMET = (
+    "https://opendata.aemet.es/opendata/api/observacion/convencional/datos/estacion/"
+)
+
+BASE_URL_AEMET = "https://opendata.aemet.es/opendata/api/"
 
 EP_OBSERVACIONES= f"observacion/convencional/datos/estacion/{ESTACION_RETIRO}"
 EP_PREVISIONES= f"prediccion/especifica/municipio/horaria/{CODIGO_MUNICIPAL}"

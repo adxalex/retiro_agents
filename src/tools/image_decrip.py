@@ -1,8 +1,4 @@
 """Tool multimodal: describe la imagen de demo (imagen → texto)."""
-
-from pathlib import Path
-from langchain_core.tools import tool
-import config
 import os
 from google import genai
 from google.genai import types
@@ -11,12 +7,13 @@ def configure_api()->str:
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError ("Error: falta GEMINI_API_KEY")
+    return api_key
 
-# @tool
-def describir_imagen(args:dict) -> str:
+
+def describir_imagen(args:dict) -> dict:
     """Describe la imagen de demo en español (texto visible, lugar, contexto).
 
-    Sin ruta (o cadena vacía) usa assets/imagen_demo.jpg del proyecto.
+    Sin ruta (o cadena vacía) usa fallback/Historia_Retiro.png del proyecto.
     Llama a esta tool cuando el usuario mencione imagen, foto, cartel, poster o captura.
     """
     try:
