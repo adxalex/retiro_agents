@@ -9,7 +9,7 @@ load_dotenv()
 DATA_DIR = "data"
 CHROMA_DIR = "chroma"
 COLLECTION_NAME = "retiro_madrid"
-PROYECT_DIR=Path('..').resolve()
+PROYECT_DIR=Path(__file__).resolve().parent
 FALLBACK_JSON=PROYECT_DIR/'src'/'tools'/'fallback'/'aemet.json'
 IMAGE_DEFAULT_NAME='Historia_Retiro.png'
 IMAGE_DEFAULT_PATH=PROYECT_DIR/'src'/'tools'/'fallback'/IMAGE_DEFAULT_NAME
