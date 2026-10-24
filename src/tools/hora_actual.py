@@ -1,6 +1,6 @@
 from datetime import datetime
 
-def hora_actual() -> str:
+def hora_actual(args=None) -> str:
     """Devuelve la fecha y hora local actuales en formato ISO."""
     try:
         return {'data':datetime.now().isoformat(timespec="seconds"),'error':None}

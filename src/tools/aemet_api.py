@@ -82,7 +82,7 @@ def _get_avisos()->dict:
         raise ValueError("El formato de los avisos no es válido.")
     return data[0]
 
-def  api_dominio()->dict:
+def  api_dominio(args=None)->dict:
     """Consulta la meteorología de El Retiro, Madrid.
 
 Obtiene las observaciones mediante AEMET. Si falla la consulta,
