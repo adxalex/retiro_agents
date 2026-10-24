@@ -45,7 +45,7 @@ Tools:
 - rag_ask: args {"pregunta": str}. Llama a responder(), no a la función rag_ask() del RAG, para conservar fuentes y citas. data = {respuesta, fuentes, citas, abstuvo, motivo_abstencion}.
 - api_dominio: args {}. data incluye "origen": "aemet" | "respaldo" y los campos de la observación.
 - hora_actual: args {}. data = {"hora_madrid": "HH:MM", "estado_parque": str}.
-- describir_imagen: args {"imagen": {"bytes", "mime"}}. data = str (descripción).
+- describir_imagen: args {"imagen": {"imagen_bytes", "mime"}}. data = str (descripción).
 
 ## 4. Traza
 
