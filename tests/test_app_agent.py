@@ -235,6 +235,75 @@ def test_app_nueva_conversacion_siempre_visible(app, agente):
     assert agente.aprobaciones == []
 
 
+def test_app_selector_un_solo_archivo_png_jpg(app):
+    selector = app.get("file_uploader")[0]
+
+    assert selector.proto.multiple_files is False
+    assert list(selector.proto.type) == [".png", ".jpg", ".jpeg"]
+
+
+def test_app_plan_se_pinta_como_lista(app, agente):
+    _con_plan(app, agente)
+
+    textos = [m.value for m in app.chat_message[1].markdown]
+    assert textos == ["Propuesta de visita",
+                      "1. Entrar por la Puerta de Alcalá\n2. Ver el Palacio de Cristal"]
+
+
+def test_app_traza_en_panel(app, agente):
+    agente.respuestas_turno.append({"respuesta": "R", "traza": [
+        {"ts": "t1", "origen": "supervisor", "nombre": "entorno", "args": {"x": 1},
+         "status": "ok", "preview": "ruta"},
+        {"ts": "t2", "origen": "tool", "nombre": "hora_actual", "args": {},
+         "status": "ok", "preview": "10:00"},
+    ]})
+
+    _enviar(app, "¿Qué hora es?")
+
+    tabla = app.expander[0].dataframe[0].value
+    assert list(tabla.columns) == ["ts", "origen", "nombre", "status", "preview"]
+    assert list(tabla["nombre"]) == ["entorno", "hora_actual"]
+
+
+@pytest.mark.parametrize("comentario, esperado", [
+    ("Prefiero el estanque", ["**Comentario de la decisión:** Prefiero el estanque"]),
+    ("", []),
+], ids=["con_comentario", "sin_comentario"])
+def test_app_comentario_en_panel(app, agente, comentario, esperado):
+    _con_plan(app, agente)
+    agente.respuesta_aprobar = {"traza": [
+        {"ts": "t3", "origen": "hitl", "nombre": "rechazar",
+         "args": {"comentario": comentario}, "status": "ok", "preview": "rechazado"}]}
+
+    app.text_area(key="comentario_0").input(comentario)
+    app.button(key="rechazar").click().run()
+
+    lineas = [m.value for m in app.expander[0].markdown if "Comentario" in m.value]
+    assert lineas == esperado
+
+
+def test_app_nueva_conversacion_vacia_comentario(app, agente):
+    _con_plan(app, agente)
+    app.text_area(key="comentario_0").input("borrador").run()
+
+    app.button(key="nueva_conversacion").click().run()
+
+    n = app.session_state["comentario_n"]
+    assert app.text_area(key=f"comentario_{n}").value == ""
+
+
+def test_app_peticion_tras_rechazo_mismo_hilo(app, agente):
+    _con_plan(app, agente)
+    hilo = _thread_id(app)
+    app.button(key="rechazar").click().run()
+
+    agente.respuestas_turno.append({"respuesta": "Respuesta tras rechazo"})
+    _enviar(app, "Otra cosa")
+
+    assert agente.turnos[-1] == ("Otra cosa", hilo, None)
+    assert app.chat_message[-1].markdown[0].value == "Respuesta tras rechazo"
+
+
 def test_app_expander_depuracion(app, agente):
     assert [e.label for e in app.expander] == ["Depuración"]
     assert "**pendiente_aprobacion:** `False`" in _textos_depuracion(app)
