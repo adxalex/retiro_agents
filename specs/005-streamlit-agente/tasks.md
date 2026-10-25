@@ -54,11 +54,11 @@
       - `pytest` sigue en verde.
 - [x] T12. Implementar `ocultar_secretos(texto)`: enmascara los valores de `GEMINI_API_KEY`, `GOOGLE_API_KEY` y `AEMET_API_KEY` presentes en el entorno y el patrón `AIza…`. Se aplica en `registrar` a `respuesta`, `error`, `plan` y a `preview` y `args.comentario` de la traza. Tests primero, con `monkeypatch.setenv`. (RF-8)
       Hecho cuando: `pytest tests/test_ui_agente.py::test_ocultar_secretos_en_error_preview_y_respuesta` en verde.
-- [ ] T13. Ampliar `nueva_sesion(ids_previos=())`, con `ids_previos` opcional y vacío por defecto para que el test de T3 siga valiendo, para que genere un id distinto de los anteriores y deje mensajes, `ultimo` y uploader vacíos, sin llamar a `aprobar` aunque haya un plan pendiente. Tests primero. (RF-41, RF-42, RF-43)
+- [x] T13. Ampliar `nueva_sesion(ids_previos=())`, con `ids_previos` opcional y vacío por defecto para que el test de T3 siga valiendo, para que genere un id distinto de los anteriores y deje mensajes, `ultimo` y uploader vacíos, sin llamar a `aprobar` aunque haya un plan pendiente. Tests primero. (RF-41, RF-42, RF-43)
       Hecho cuando: en verde `test_nueva_conversacion_genera_id_distinto`, `test_nueva_conversacion_vacia_estado` y `test_nueva_conversacion_con_plan_pendiente_no_decide`.
-- [ ] T14. Añadir a la sidebar de `app_agent.py` el botón "Nueva conversación", siempre habilitado. Crea una sesión nueva con los ids previos y vacía el campo de comentario. (RF-40, RF-42)
+- [x] T14. Añadir a la sidebar de `app_agent.py` el botón "Nueva conversación", siempre habilitado. Crea una sesión nueva con los ids previos y vacía el campo de comentario. (RF-40, RF-42)
       Hecho cuando: con `streamlit run app_agent.py`, al pulsar "Nueva conversación" el `thread_id` del expander cambia, el chat queda vacío y `pytest` sigue en verde.
-- [ ] T15. Actualizar `AGENTS.md`: añadir `app_agent.py` y `src/ui_agente.py` al mapa del código y el comando `streamlit run app_agent.py` ⚠️ a Comandos. (Documentación)
+- [x] T15. Actualizar `AGENTS.md`: añadir `app_agent.py` y `src/ui_agente.py` al mapa del código y el comando `streamlit run app_agent.py` ⚠️ a Comandos. (Documentación)
       Hecho cuando: `AGENTS.md` incluye las dos filas y el comando, y `pytest` sale en verde.
 
 ## Bloque 3 — Tests de la app con AppTest
