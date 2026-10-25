@@ -1,6 +1,6 @@
 # Spec 001 — Herramientas del agente
 
-> Estado: Aprobada · Fecha: 2026-10-24
+> Estado: Aprobada · Fecha: 2026-10-25
 
 ## Contexto y objetivo
 El agente necesita consultar la hora, información meteorológica de El Retiro, descripciones de imágenes e información respaldada por el corpus del proyecto. Esta especificación define el comportamiento observable común de esas herramientas y el comportamiento propio de cada una, incluidos sus resultados y errores, para que el agente pueda utilizarlas sin inventar datos ni confundir una respuesta parcial con una respuesta completa.
@@ -39,7 +39,7 @@ El agente necesita consultar la hora, información meteorológica de El Retiro, 
 
 ### D. Descripción de imágenes
 - RF-14: CUANDO el agente aporte una imagen válida, EL SISTEMA devolverá una descripción textual en español de su contenido.
-- RF-15: SI el agente no aporta un diccionario de imagen con `imagen_bytes` de tipo `bytes` y no vacío, y `mime` igual a `image/png` o `image/jpeg`, ENTONCES EL SISTEMA utilizará una imagen de respaldo almacenada en el proyecto, que se considera válida, para generar la descripción.
+- RF-15: SI el agente no aporta un diccionario de imagen con `bytes` de tipo `bytes` y no vacío, y `mime` igual a `image/png` o `image/jpeg`, ENTONCES EL SISTEMA utilizará una imagen de respaldo almacenada en el proyecto, que se considera válida, para generar la descripción.
 - RF-16: SI el servicio de descripción falla al procesar la imagen seleccionada (la aportada válida o la de respaldo) o no puede leerla, ENTONCES EL SISTEMA devolverá un resultado con estado `error` y `data` igual a `None`, conforme a RF-2, sin intentar otro fallback.
 - RF-17: SI el servicio de descripción devuelve una respuesta vacía, ENTONCES EL SISTEMA devolverá un resultado con estado `error` y `data` igual a `None`, conforme a RF-2.
 - RF-23: SI no se puede obtener la imagen de respaldo durante el fallback por argumentos inválidos, ENTONCES EL SISTEMA devolverá un resultado con estado `error` y `data` igual a `None` sin propagar una excepción al agente.
