@@ -41,10 +41,13 @@ FIRMAS_IMAGEN = {
 }
 
 
-def nueva_sesion() -> dict:
-    """Crea el estado de una conversación nueva."""
+def nueva_sesion(ids_previos=()) -> dict:
+    """Crea el estado de una conversación nueva, con un id no usado antes."""
+    thread_id = str(uuid.uuid4())
+    while thread_id in ids_previos:
+        thread_id = str(uuid.uuid4())
     return {
-        "thread_id": str(uuid.uuid4()),
+        "thread_id": thread_id,
         "mensajes": [],
         "ultimo": None,
         "uploader_key": 0,

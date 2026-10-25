@@ -21,6 +21,8 @@ def _sesion() -> dict:
         st.session_state["agente"] = ui_agente.nueva_sesion()
     if "comentario_n" not in st.session_state:
         st.session_state["comentario_n"] = 0
+    if "ids_previos" not in st.session_state:
+        st.session_state["ids_previos"] = []
     return st.session_state["agente"]
 
 
@@ -41,9 +43,10 @@ def _pintar_mensaje(mensaje: dict) -> None:
 
 
 def _sidebar(sesion: dict) -> None:
-    """Comentario y botones de decisión sobre el plan pendiente."""
+    """Nueva conversación, comentario y botones de decisión sobre el plan."""
     hay_plan = ui_agente.pendiente(sesion)
     with st.sidebar:
+        nueva = st.button("Nueva conversación", key="nueva_conversacion")
         st.header("Plan propuesto")
         comentario = st.text_area(
             "Comentario (opcional)",
@@ -55,6 +58,14 @@ def _sidebar(sesion: dict) -> None:
             "Aprobar", key="aprobar", disabled=not hay_plan, type="primary")
         rechazar = columna_rechazar.button(
             "Rechazar", key="rechazar", disabled=not hay_plan)
+
+    if nueva:
+        # El hilo anterior queda tal cual; si tenía un plan pendiente, sin decidir.
+        st.session_state["ids_previos"].append(sesion["thread_id"])
+        st.session_state["agente"] = ui_agente.nueva_sesion(
+            st.session_state["ids_previos"])
+        st.session_state["comentario_n"] += 1
+        st.rerun()
 
     if aprobar or rechazar:
         with st.spinner("Enviando la decisión al agente..."):
@@ -86,7 +97,8 @@ def _adjunto(sesion: dict) -> tuple[str | None, bytes | None]:
         "Adjuntar imagen (opcional, PNG o JPG)",
         type=["png", "jpg", "jpeg"],
         accept_multiple_files=False,
-        key=f"imagen_{sesion['uploader_key']}",
+        # Cambia al enviar una imagen y al empezar una conversación nueva.
+        key=f"imagen_{sesion['thread_id']}_{sesion['uploader_key']}",
     )
     if archivo is None:
         return None, None

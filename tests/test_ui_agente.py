@@ -645,6 +645,44 @@ def test_ocultar_secretos_en_error_preview_y_respuesta(
         f"ojo {ui_agente.MASCARA}")
 
 
+def test_nueva_conversacion_genera_id_distinto(monkeypatch):
+    repetido = uuid.UUID("11111111-1111-4111-8111-111111111111")
+    nuevo = uuid.UUID("22222222-2222-4222-8222-222222222222")
+    generados = iter([repetido, repetido, nuevo])
+    monkeypatch.setattr(ui_agente.uuid, "uuid4", lambda: next(generados))
+
+    sesion = ui_agente.nueva_sesion([str(repetido)])
+
+    assert sesion["thread_id"] == str(nuevo)
+
+
+def test_nueva_conversacion_vacia_estado(sesion_con_plan):
+    sesion_con_plan["uploader_key"] = 3
+    previos = [sesion_con_plan["thread_id"]]
+
+    nueva = ui_agente.nueva_sesion(previos)
+
+    assert nueva["thread_id"] not in previos
+    assert nueva["mensajes"] == []
+    assert nueva["ultimo"] is None
+    assert nueva["uploader_key"] == 0
+    assert ui_agente.pendiente(nueva) is False
+
+
+def test_nueva_conversacion_con_plan_pendiente_no_decide(sesion_con_plan, aprobar_falso):
+    mensajes_previos = [dict(m) for m in sesion_con_plan["mensajes"]]
+
+    ui_agente.nueva_sesion([sesion_con_plan["thread_id"]])
+
+    assert aprobar_falso.llamadas == []
+    # El hilo anterior queda tal cual: pendiente y sin mensaje de decisión.
+    assert ui_agente.pendiente(sesion_con_plan) is True
+    assert sesion_con_plan["mensajes"] == mensajes_previos
+    textos = [m["texto"] for m in sesion_con_plan["mensajes"]]
+    assert ui_agente.MENSAJE_PLAN_APROBADO not in textos
+    assert ui_agente.MENSAJE_PLAN_RECHAZADO not in textos
+
+
 def test_decision_usa_mismo_thread_id(sesion_con_plan, procesar_falso, aprobar_falso):
     ui_agente.decidir(sesion_con_plan, False, "", aprobar_falso)
 

@@ -46,13 +46,13 @@
       - Después del envío incrementa `uploader_key`.
       Tests primero. (RF-12, RF-13, RF-14, RF-15, RF-16)
       Hecho cuando: en verde `test_imagen_invalida_no_envia_mensaje`, `test_imagen_se_pasa_en_formato_contrato` y `test_imagen_se_descarta_tras_envio`.
-- [ ] T11. Añadir a `app_agent.py` un `st.file_uploader` con un solo archivo, tipos png/jpg/jpeg y `key` ligada a `uploader_key`. Muestra la miniatura con `st.image` y avisa en cuanto se adjunta un archivo no válido. (RF-9, RF-11, RF-13, RF-14)
+- [x] T11. Añadir a `app_agent.py` un `st.file_uploader` con un solo archivo, tipos png/jpg/jpeg y `key` ligada a `uploader_key`. Muestra la miniatura con `st.image` y avisa en cuanto se adjunta un archivo no válido. (RF-9, RF-11, RF-13, RF-14)
       Hecho cuando: con `streamlit run app_agent.py` y sin enviar mensaje:
       - Al adjuntar un PNG de menos de 5 MB se ve su miniatura.
       - El selector no permite elegir dos archivos.
       - Al adjuntar un PNG de más de 5 MB aparece el aviso de tamaño.
       - `pytest` sigue en verde.
-- [ ] T12. Implementar `ocultar_secretos(texto)`: enmascara los valores de `GEMINI_API_KEY`, `GOOGLE_API_KEY` y `AEMET_API_KEY` presentes en el entorno y el patrón `AIza…`. Se aplica en `registrar` a `respuesta`, `error`, `plan` y a `preview` y `args.comentario` de la traza. Tests primero, con `monkeypatch.setenv`. (RF-8)
+- [x] T12. Implementar `ocultar_secretos(texto)`: enmascara los valores de `GEMINI_API_KEY`, `GOOGLE_API_KEY` y `AEMET_API_KEY` presentes en el entorno y el patrón `AIza…`. Se aplica en `registrar` a `respuesta`, `error`, `plan` y a `preview` y `args.comentario` de la traza. Tests primero, con `monkeypatch.setenv`. (RF-8)
       Hecho cuando: `pytest tests/test_ui_agente.py::test_ocultar_secretos_en_error_preview_y_respuesta` en verde.
 - [ ] T13. Ampliar `nueva_sesion(ids_previos=())`, con `ids_previos` opcional y vacío por defecto para que el test de T3 siga valiendo, para que genere un id distinto de los anteriores y deje mensajes, `ultimo` y uploader vacíos, sin llamar a `aprobar` aunque haya un plan pendiente. Tests primero. (RF-41, RF-42, RF-43)
       Hecho cuando: en verde `test_nueva_conversacion_genera_id_distinto`, `test_nueva_conversacion_vacia_estado` y `test_nueva_conversacion_con_plan_pendiente_no_decide`.
