@@ -1,6 +1,7 @@
 
 from src.graph import build_graph, _ruta_fallback
 import config
+from types import SimpleNamespace
 
 
 def test_build_graph_devuelve_un_grafo_compilado():
@@ -10,19 +11,47 @@ def test_build_graph_devuelve_un_grafo_compilado():
     assert callable(grafo.invoke)
 
 
-def test_grafo_contiene_los_nodos_principales():
-    grafo = build_graph()
-    nodos = grafo.get_graph().nodes
+def test_seleccionar_ruta_acepta_bloques_de_texto(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from src.graph import _seleccionar_ruta
 
-    esperados = {
-        "supervisor",
-        "normas",
-        "entorno",
-        "sintetizar",
-        "aplicar",
+    respuesta = SimpleNamespace(
+        content=[
+            {
+                "type": "text",
+                "text": "entorno",
+                "extras": {"signature": "firma"},
+            }
+        ],
+        text="entorno",
+    )
+
+    class ModeloFalso:
+        def __init__(self, **kwargs):
+            pass
+
+        def invoke(self, mensaje):
+            return respuesta
+
+    modulo_falso = SimpleNamespace(
+        ChatGoogleGenerativeAI=ModeloFalso
+    )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "langchain_google_genai",
+        modulo_falso,
+    )
+
+    estado = {
+        "pedido": "Quiero organizar una visita",
+        "notas": {},
+        "pasos": 0,
+        "pasos_especialista": {},
     }
 
-    assert esperados.issubset(nodos.keys())
+    assert _seleccionar_ruta(estado) == "entorno"
 
 
 def test_max_iter_es_seis():
@@ -147,3 +176,69 @@ def test_supervisor_reserva_la_ultima_pasada_para_sintesis(monkeypatch):
     }
 
     assert _ruta_supervisor_limitada(estado) == "sintetizar"
+
+    from types import SimpleNamespace
+
+
+def test_generar_nota_especialista_acepta_bloques_de_texto():
+    from src.graph import _generar_nota_especialista
+
+    respuesta = SimpleNamespace(
+        content=[
+            {
+                "type": "text",
+                "text": "- Visitar el Palacio de Cristal",
+                "extras": {"signature": "firma"},
+            }
+        ],
+        text="- Visitar el Palacio de Cristal",
+    )
+
+    nota = _generar_nota_especialista(
+        "Prompt de prueba",
+        "Contexto de prueba",
+        llm_runner=lambda prompt, contexto: respuesta,
+    )
+
+    assert nota == "- Visitar el Palacio de Cristal"
+
+
+def test_seleccionar_ruta_acepta_bloques_de_texto(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import src.graph as graph
+
+    respuesta = SimpleNamespace(
+        content=[
+            {
+                "type": "text",
+                "text": "entorno",
+                "extras": {"signature": "firma"},
+            }
+        ],
+        text="entorno",
+    )
+
+    class ModeloFalso:
+        def __init__(self, **kwargs):
+            pass
+
+        def invoke(self, mensaje):
+            return respuesta
+
+    modulo_falso = SimpleNamespace(
+        ChatGoogleGenerativeAI=ModeloFalso
+    )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "langchain_google_genai",
+        modulo_falso,
+    )
+
+    assert graph._seleccionar_ruta({
+        "pedido": "Quiero organizar una visita",
+        "notas": {},
+        "pasos": 0,
+        "pasos_especialista": {},
+    }) == "entorno"

@@ -71,7 +71,10 @@ def _generar_nota_especialista(
                 ("human", contexto),
             ])
 
-        contenido = getattr(resultado, "content", resultado)
+        contenido = getattr(resultado, "text", None)
+
+        if not isinstance(contenido, str):
+            contenido = getattr(resultado, "content", resultado)
 
         if isinstance(contenido, str) and contenido.strip():
             return contenido.strip()
@@ -295,7 +298,15 @@ def _seleccionar_ruta(estado: EstadoGrafo) -> str:
         )
 
         resultado = llm.invoke(mensaje)
-        ruta = resultado.content.strip().lower().strip("'\"")
+        contenido = getattr(resultado, "text", None)
+
+        if not isinstance(contenido, str):
+            contenido = getattr(resultado, "content", resultado)
+
+        if not isinstance(contenido, str):
+            return _ruta_fallback(estado)
+
+        ruta = contenido.strip().lower().strip("'\"")
 
         if ruta in RUTAS_VALIDAS:
             return ruta
