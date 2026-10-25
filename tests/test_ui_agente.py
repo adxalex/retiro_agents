@@ -581,6 +581,70 @@ def test_imagen_se_descarta_tras_envio(sesion, procesar_falso):
     assert procesar_falso.llamadas[1]["imagen"] is None
 
 
+CLAVE_GEMINI = "clave-gemini-de-prueba-123"
+CLAVE_AEMET = "token-aemet-de-prueba-456"
+CLAVE_GOOGLE = "AIza" + "B" * 35
+
+
+@pytest.fixture
+def entorno_secretos(monkeypatch):
+    """Claves falsas en el entorno; nunca se usan las reales."""
+    for variable in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "AEMET_API_KEY"):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", CLAVE_GEMINI)
+    monkeypatch.setenv("AEMET_API_KEY", CLAVE_AEMET)
+
+
+def test_ocultar_secretos_valores_de_entorno(entorno_secretos):
+    texto = f"Fallo con {CLAVE_GEMINI} y {CLAVE_AEMET}."
+
+    oculto = ui_agente.ocultar_secretos(texto)
+
+    assert CLAVE_GEMINI not in oculto and CLAVE_AEMET not in oculto
+    assert oculto == f"Fallo con {ui_agente.MASCARA} y {ui_agente.MASCARA}."
+
+
+def test_ocultar_secretos_patron_google(entorno_secretos):
+    corta = "AIza" + "C" * 10
+
+    oculto = ui_agente.ocultar_secretos(f"key={CLAVE_GOOGLE} y {corta}")
+
+    assert oculto == f"key={ui_agente.MASCARA} y {corta}"
+
+
+def test_ocultar_secretos_en_error_preview_y_respuesta(
+        entorno_secretos, sesion, procesar_falso, aprobar_falso):
+    procesar_falso.respuestas = [{
+        "respuesta": f"Respuesta con {CLAVE_GEMINI}",
+        "plan": [f"Paso con {CLAVE_AEMET}"],
+        "pendiente_aprobacion": True,
+        "error": f"Error con {CLAVE_GOOGLE}",
+        "traza": [evento("tool", "api_dominio", {"comentario": CLAVE_GEMINI},
+                         "error", f"preview {CLAVE_AEMET}")],
+    }]
+
+    ui_agente.enviar_turno(sesion, "Plan", None, None, procesar_falso)
+
+    ultimo = sesion["ultimo"]
+    assert ultimo["respuesta"] == f"Respuesta con {ui_agente.MASCARA}"
+    assert ultimo["plan"] == [f"Paso con {ui_agente.MASCARA}"]
+    assert ultimo["error"] == f"Error con {ui_agente.MASCARA}"
+    assert ultimo["traza"][0]["preview"] == f"preview {ui_agente.MASCARA}"
+    assert ultimo["traza"][0]["args"]["comentario"] == ui_agente.MASCARA
+    # Lo que se pinta en el chat sale ya enmascarado.
+    visible = str(sesion["mensajes"]) + str(ui_agente.estado_depuracion(sesion))
+    for clave in (CLAVE_GEMINI, CLAVE_AEMET, CLAVE_GOOGLE):
+        assert clave not in visible
+
+    # El comentario de la decisión que se lee de la traza también.
+    aprobar_falso.respuesta = {"traza": [evento(
+        "hitl", "rechazar", {"comentario": f"ojo {CLAVE_GEMINI}"})]}
+    ui_agente.decidir(sesion, False, "", aprobar_falso)
+
+    assert ui_agente.estado_depuracion(sesion)["comentario"] == (
+        f"ojo {ui_agente.MASCARA}")
+
+
 def test_decision_usa_mismo_thread_id(sesion_con_plan, procesar_falso, aprobar_falso):
     ui_agente.decidir(sesion_con_plan, False, "", aprobar_falso)
 

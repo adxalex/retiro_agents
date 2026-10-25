@@ -80,6 +80,26 @@ def _depuracion(sesion: dict) -> None:
             st.markdown(f"**Comentario de la decisión:** {datos['comentario']}")
 
 
+def _adjunto(sesion: dict) -> tuple[str | None, bytes | None]:
+    """Selector de imagen con miniatura o aviso; devuelve mime y bytes."""
+    archivo = st.file_uploader(
+        "Adjuntar imagen (opcional, PNG o JPG)",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=False,
+        key=f"imagen_{sesion['uploader_key']}",
+    )
+    if archivo is None:
+        return None, None
+
+    mime, datos = archivo.type, archivo.getvalue()
+    imagen, aviso = ui_agente.validar_imagen(mime, datos)
+    if aviso:
+        st.warning(aviso)
+    else:
+        st.image(imagen["bytes"], width=120)
+    return mime, datos
+
+
 def main() -> None:
     """Punto de entrada de la app de Streamlit."""
     st.title("Agente del Parque de El Retiro")
@@ -94,12 +114,13 @@ def main() -> None:
         st.warning(ui_agente.AVISO_PLAN_PENDIENTE)
 
     _depuracion(sesion)
+    mime, datos = _adjunto(sesion)
 
     texto = st.chat_input(
         "Pregunta o pide un plan de visita...", key="chat", disabled=bloqueado)
     if texto:
         with st.spinner("El agente está trabajando..."):
-            ui_agente.enviar_turno(sesion, texto, None, None, agent.procesar_turno)
+            ui_agente.enviar_turno(sesion, texto, mime, datos, agent.procesar_turno)
         st.rerun()
 
 

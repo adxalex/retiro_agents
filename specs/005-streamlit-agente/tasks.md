@@ -25,7 +25,7 @@
       Hecho cuando: en verde `test_aprobar_llama_con_true_y_comentario`, `test_rechazar_llama_con_false_y_comentario`, `test_aprobacion_con_done_muestra_plan_aprobado`, `test_rechazo_muestra_mensaje`, `test_decision_conserva_mensajes`, `test_decision_desbloquea_chat`, `test_aprobacion_con_error_no_muestra_aprobado`, `test_aprobacion_sin_done_no_muestra_aprobado`, `test_turno_pendiente_no_llama_a_aprobar`, `test_mensajes_de_decision_textos_exactos`, `test_decision_usa_mismo_thread_id`, `test_decision_con_excepcion_mantiene_plan_pendiente`, `test_decision_con_error_del_nucleo_usa_su_bandera` y `test_turno_con_excepcion_deja_chat_libre`.
 - [x] T7. Implementar los datos del panel de depuración. `filas_traza(traza)` devuelve los cinco campos en orden. `comentario_hitl(traza)` devuelve el comentario del último evento `hitl` si no está vacío. `estado_depuracion(sesion)` reúne `thread_id`, `pendiente_aprobacion`, `done`, las filas y el comentario. Tests primero. (RF-32, RF-33, RF-34, RF-35, RF-37)
       Hecho cuando: en verde `test_filas_traza_campos_y_orden`, `test_comentario_hitl_ultimo_evento`, `test_comentario_hitl_vacio_no_se_muestra` y `test_estado_depuracion`.
-- [ ] T8. Crear la versión mínima de `app_agent.py`:
+- [x] T8. Crear la versión mínima de `app_agent.py`:
       - Chat con los mensajes por rol y el plan como lista.
       - `chat_input` desactivado y aviso "Hay un plan pendiente: apruébalo o recházalo para continuar" mientras haya un plan pendiente.
       - Sidebar con un campo de comentario y los botones Aprobar y Rechazar, deshabilitados si no hay plan pendiente.
@@ -38,9 +38,9 @@
       - `streamlit run app_agent.py` abre sin errores y, sin enviar nada, muestra la caja de chat activa, los botones Aprobar y Rechazar deshabilitados y el expander "Depuración" cerrado, que al abrirlo enseña el `thread_id`.
 
 ## Bloque 2 — Imagen, secretos y nueva conversación
-- [ ] T9. Implementar `validar_imagen(mime, datos)`: comprueba el MIME y la firma de bytes de PNG y JPG, rechaza lo que supere `IMAGEN_MAX_BYTES` y acepta el límite exacto. Tests primero. (RF-10, RF-14, RF-15)
+- [x] T9. Implementar `validar_imagen(mime, datos)`: comprueba el MIME y la firma de bytes de PNG y JPG, rechaza lo que supere `IMAGEN_MAX_BYTES` y acepta el límite exacto. Tests primero. (RF-10, RF-14, RF-15)
       Hecho cuando: en verde `test_validar_imagen_acepta_png_y_jpg`, `test_validar_imagen_formato_no_admitido`, `test_validar_imagen_mime_falseado`, `test_validar_imagen_supera_limite` y `test_validar_imagen_en_limite_exacto`.
-- [ ] T10. Integrar la imagen en `enviar_turno`:
+- [x] T10. Integrar la imagen en `enviar_turno`:
       - Si la imagen no es válida, muestra un aviso y no envía el mensaje.
       - Si es válida, la pasa al agente como `{"bytes", "mime"}` sin describirla.
       - Después del envío incrementa `uploader_key`.
@@ -73,3 +73,4 @@
 ## Validación
 - [ ] T20. Validación final RF por RF (`/sdd-validar`), con las comprobaciones manuales de RF-4, RF-9, RF-11, RF-13 y RF-31 y la demo de los criterios de finalización. (Todos)
       Hecho cuando: `validacion.md` con veredicto "Sí".
+      Evidencia ya conseguida (25/10): comprobación manual de T8 superada con una prueba real con Gemini en `streamlit run app_agent.py`. Se generó un plan, el chat quedó bloqueado mientras estaba pendiente y se aprobó y rechazó con comentario.

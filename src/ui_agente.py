@@ -1,4 +1,6 @@
 """Lógica de la interfaz Streamlit del agente, sin Streamlit ni grafo."""
+import os
+import re
 import uuid
 from typing import Callable
 
@@ -26,6 +28,11 @@ AVISO_IMAGEN_TAMANO = (
 )
 
 CAMPOS_TRAZA = ("ts", "origen", "nombre", "status", "preview")
+
+# Secretos que nunca deben llegar a la pantalla.
+MASCARA = "***"
+VARIABLES_SECRETAS = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "AEMET_API_KEY")
+PATRON_CLAVE_GOOGLE = re.compile(r"AIza[0-9A-Za-z_-]{35}")
 
 # Primeros bytes que identifican cada formato admitido.
 FIRMAS_IMAGEN = {
@@ -83,9 +90,40 @@ def llamar_seguro(
     return completo
 
 
-def registrar(sesion: dict, resultado: dict) -> None:
-    """Guarda el último resultado del agente, sustituyendo al anterior."""
-    sesion["ultimo"] = resultado
+def ocultar_secretos(texto):
+    """Enmascara claves de API conocidas; lo que no es texto se devuelve igual."""
+    if not isinstance(texto, str):
+        return texto
+    for variable in VARIABLES_SECRETAS:
+        valor = os.environ.get(variable)
+        if valor:
+            texto = texto.replace(valor, MASCARA)
+    return PATRON_CLAVE_GOOGLE.sub(MASCARA, texto)
+
+
+def _evento_sin_secretos(evento: dict) -> dict:
+    """Copia del evento con preview y comentario enmascarados."""
+    limpio = dict(evento)
+    if "preview" in evento:
+        limpio["preview"] = ocultar_secretos(evento["preview"])
+    args = evento.get("args")
+    if isinstance(args, dict) and "comentario" in args:
+        limpio["args"] = {**args, "comentario": ocultar_secretos(args["comentario"])}
+    return limpio
+
+
+def registrar(sesion: dict, resultado: dict) -> dict:
+    """Guarda el último resultado del agente, sin secretos y sustituyendo al anterior."""
+    limpio = dict(resultado)
+    limpio["respuesta"] = ocultar_secretos(resultado["respuesta"])
+    limpio["error"] = ocultar_secretos(resultado["error"])
+    limpio["plan"] = [ocultar_secretos(paso) for paso in resultado["plan"] or []]
+    limpio["traza"] = [
+        _evento_sin_secretos(e) if isinstance(e, dict) else e
+        for e in resultado["traza"] or []
+    ]
+    sesion["ultimo"] = limpio
+    return limpio
 
 
 def pendiente(sesion: dict) -> bool:
@@ -166,7 +204,7 @@ def enviar_turno(
     resultado = llamar_seguro(
         procesar, texto, sesion["thread_id"], imagen,
         pendiente_previo=pendiente(sesion))
-    registrar(sesion, resultado)
+    resultado = registrar(sesion, resultado)
     if imagen:
         # Una clave nueva vacía el selector: la imagen no se reenvía.
         sesion["uploader_key"] += 1
@@ -194,7 +232,7 @@ def decidir(
     resultado = llamar_seguro(
         aprobar, sesion["thread_id"], aprobado, (comentario or "").strip(),
         pendiente_previo=pendiente(sesion))
-    registrar(sesion, resultado)
+    resultado = registrar(sesion, resultado)
 
     if resultado["error"]:
         _anadir(sesion, ROL_AVISO, resultado["error"])
