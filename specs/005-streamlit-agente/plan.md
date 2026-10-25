@@ -5,7 +5,7 @@
 ## Archivos afectados
 | Archivo | Crear / Modificar | Qué cambia | RF |
 |---|---|---|---|
-| `config.py` | Modificar | Añade `IMAGEN_MAX_BYTES = 5 * 1024 * 1024` y `IMAGEN_MIME_PERMITIDOS = ("image/png", "image/jpeg")` en una sección "Interfaz Streamlit del agente" | RF-10, RF-14, RF-15 |
+| `config.py` | Modificar | Añade en una sección "Interfaz Streamlit del agente" `IMAGEN_MAX_BYTES = 5 * 1024 * 1024`, `IMAGEN_MIME_PERMITIDOS = ("image/png", "image/jpeg")`, `IMAGEN_ANCHO_MINIATURA`, `FIRMAS_IMAGEN`, `VARIABLES_SECRETAS`, `MASCARA` y `CAMPOS_TRAZA` | RF-8, RF-10, RF-11, RF-14, RF-15, RF-35 |
 | `src/ui_agente.py` | Crear | Lógica pura de la UI, sin Streamlit ni grafo: sesión, validación de imagen, envío de turno y de decisión con las funciones del agente inyectadas, derivación de estado, filas de traza, comentario HITL y ocultación de secretos | RF-1 a RF-3, RF-5 a RF-8, RF-10, RF-12 a RF-17, RF-21 a RF-30, RF-32 a RF-39, RF-41 a RF-45 |
 | `app_agent.py` | Crear | Capa de presentación en Streamlit: pinta el chat, el uploader con miniatura, la sidebar (Aprobar, Rechazar, comentario y Nueva conversación) y el expander de depuración. Llama a `src.ui_agente` pasándole `procesar_turno` y `aprobar_plan` | RF-1, RF-4, RF-9, RF-11, RF-17 a RF-20, RF-31, RF-40 |
 | `tests/test_ui_agente.py` | Crear | Tests unitarios de `src/ui_agente.py` con dobles del agente | ver trazabilidad |

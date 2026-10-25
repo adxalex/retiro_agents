@@ -118,3 +118,14 @@ MAX_STEPS_ESPECIALISTA = 3
 # --- Interfaz Streamlit del agente ---
 IMAGEN_MAX_BYTES = 5 * 1024 * 1024  # 5 MB; el valor exacto se acepta
 IMAGEN_MIME_PERMITIDOS = ("image/png", "image/jpeg")
+IMAGEN_ANCHO_MINIATURA = 120  # píxeles
+# Primeros bytes que identifican cada formato admitido.
+FIRMAS_IMAGEN = {
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/jpeg": b"\xff\xd8\xff",
+}
+# Variables de entorno cuyo valor nunca debe llegar a la pantalla.
+VARIABLES_SECRETAS = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "AEMET_API_KEY")
+MASCARA = "***"
+# Campos de cada evento de traza que muestra el panel de depuración.
+CAMPOS_TRAZA = ("ts", "origen", "nombre", "status", "preview")

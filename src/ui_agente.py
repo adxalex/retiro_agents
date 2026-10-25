@@ -1,6 +1,10 @@
 """Lógica de la interfaz Streamlit del agente, sin Streamlit ni grafo."""
+import os
+import re
 import uuid
 from typing import Callable
+
+import config
 
 ROL_USUARIO = "usuario"
 ROL_AGENTE = "agente"
@@ -15,13 +19,24 @@ AVISO_PLAN_PENDIENTE = "Hay un plan pendiente: apruébalo o recházalo para cont
 MENSAJE_PLAN_APROBADO = "Plan aprobado"
 MENSAJE_PLAN_RECHAZADO = "Plan rechazado, puedes hacer otra petición"
 
-CAMPOS_TRAZA = ("ts", "origen", "nombre", "status", "preview")
+AVISO_IMAGEN_FORMATO = (
+    "Formato de imagen no admitido: solo PNG o JPG. El mensaje no se ha enviado."
+)
+AVISO_IMAGEN_TAMANO = (
+    f"La imagen supera {config.IMAGEN_MAX_BYTES // (1024 * 1024)} MB. "
+    "El mensaje no se ha enviado."
+)
+
+PATRON_CLAVE_GOOGLE = re.compile(r"AIza[0-9A-Za-z_-]{35}")
 
 
-def nueva_sesion() -> dict:
-    """Crea el estado de una conversación nueva."""
+def nueva_sesion(ids_previos=()) -> dict:
+    """Crea el estado de una conversación nueva, con un id no usado antes."""
+    thread_id = str(uuid.uuid4())
+    while thread_id in ids_previos:
+        thread_id = str(uuid.uuid4())
     return {
-        "thread_id": str(uuid.uuid4()),
+        "thread_id": thread_id,
         "mensajes": [],
         "ultimo": None,
         "uploader_key": 0,
@@ -67,9 +82,40 @@ def llamar_seguro(
     return completo
 
 
-def registrar(sesion: dict, resultado: dict) -> None:
-    """Guarda el último resultado del agente, sustituyendo al anterior."""
-    sesion["ultimo"] = resultado
+def ocultar_secretos(texto):
+    """Enmascara claves de API conocidas; lo que no es texto se devuelve igual."""
+    if not isinstance(texto, str):
+        return texto
+    for variable in config.VARIABLES_SECRETAS:
+        valor = os.environ.get(variable)
+        if valor:
+            texto = texto.replace(valor, config.MASCARA)
+    return PATRON_CLAVE_GOOGLE.sub(config.MASCARA, texto)
+
+
+def _evento_sin_secretos(evento: dict) -> dict:
+    """Copia del evento con preview y comentario enmascarados."""
+    limpio = dict(evento)
+    if "preview" in evento:
+        limpio["preview"] = ocultar_secretos(evento["preview"])
+    args = evento.get("args")
+    if isinstance(args, dict) and "comentario" in args:
+        limpio["args"] = {**args, "comentario": ocultar_secretos(args["comentario"])}
+    return limpio
+
+
+def registrar(sesion: dict, resultado: dict) -> dict:
+    """Guarda el último resultado del agente, sin secretos y sustituyendo al anterior."""
+    limpio = dict(resultado)
+    limpio["respuesta"] = ocultar_secretos(resultado["respuesta"])
+    limpio["error"] = ocultar_secretos(resultado["error"])
+    limpio["plan"] = [ocultar_secretos(paso) for paso in resultado["plan"] or []]
+    limpio["traza"] = [
+        _evento_sin_secretos(e) if isinstance(e, dict) else e
+        for e in resultado["traza"] or []
+    ]
+    sesion["ultimo"] = limpio
+    return limpio
 
 
 def pendiente(sesion: dict) -> bool:
@@ -78,10 +124,29 @@ def pendiente(sesion: dict) -> bool:
     return bool(ultimo and ultimo.get("pendiente_aprobacion"))
 
 
+def validar_imagen(
+    mime: str | None, datos: bytes | None
+) -> tuple[dict | None, str | None]:
+    """Comprueba formato y tamaño de la imagen adjunta.
+
+    Devuelve (imagen, aviso): la imagen en el formato del contrato si es
+    válida, o None y el aviso que se muestra si no lo es.
+    """
+    if datos is None:
+        return None, None
+    firma = (config.FIRMAS_IMAGEN.get(mime)
+             if mime in config.IMAGEN_MIME_PERMITIDOS else None)
+    if firma is None or not datos.startswith(firma):
+        return None, AVISO_IMAGEN_FORMATO
+    if len(datos) > config.IMAGEN_MAX_BYTES:
+        return None, AVISO_IMAGEN_TAMANO
+    return {"bytes": datos, "mime": mime}, None
+
+
 def filas_traza(traza: list) -> list[dict]:
     """Reduce cada evento de traza a los campos que muestra el panel."""
     return [
-        {campo: evento.get(campo) or "" for campo in CAMPOS_TRAZA}
+        {campo: evento.get(campo) or "" for campo in config.CAMPOS_TRAZA}
         for evento in traza or []
     ]
 
@@ -123,11 +188,19 @@ def enviar_turno(
     if not texto:
         return
 
+    imagen, aviso = validar_imagen(mime, datos)
+    if aviso:
+        _anadir(sesion, ROL_AVISO, aviso)
+        return
+
     _anadir(sesion, ROL_USUARIO, texto)
     resultado = llamar_seguro(
-        procesar, texto, sesion["thread_id"], None,
+        procesar, texto, sesion["thread_id"], imagen,
         pendiente_previo=pendiente(sesion))
-    registrar(sesion, resultado)
+    resultado = registrar(sesion, resultado)
+    if imagen:
+        # Una clave nueva vacía el selector: la imagen no se reenvía.
+        sesion["uploader_key"] += 1
 
     respuesta = resultado["respuesta"] or ""
     plan = resultado["plan"] or []
@@ -152,7 +225,7 @@ def decidir(
     resultado = llamar_seguro(
         aprobar, sesion["thread_id"], aprobado, (comentario or "").strip(),
         pendiente_previo=pendiente(sesion))
-    registrar(sesion, resultado)
+    resultado = registrar(sesion, resultado)
 
     if resultado["error"]:
         _anadir(sesion, ROL_AVISO, resultado["error"])

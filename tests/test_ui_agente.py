@@ -470,6 +470,219 @@ def test_estado_depuracion(sesion, procesar_falso):
     assert estado["comentario"] is None
 
 
+FIRMA_PNG = b"\x89PNG\r\n\x1a\n"
+FIRMA_JPEG = b"\xff\xd8\xff"
+
+
+def bytes_imagen(firma: bytes, total: int = 64) -> bytes:
+    """Bytes mínimos con la firma indicada y el tamaño total pedido."""
+    return firma + b"0" * (total - len(firma))
+
+
+@pytest.mark.parametrize("mime, firma", [
+    ("image/png", FIRMA_PNG),
+    ("image/jpeg", FIRMA_JPEG),
+])
+def test_validar_imagen_acepta_png_y_jpg(mime, firma):
+    datos = bytes_imagen(firma)
+
+    imagen, aviso = ui_agente.validar_imagen(mime, datos)
+
+    assert imagen == {"bytes": datos, "mime": mime}
+    assert aviso is None
+
+
+def test_validar_imagen_sin_adjunto():
+    assert ui_agente.validar_imagen(None, None) == (None, None)
+
+
+@pytest.mark.parametrize("mime, datos", [
+    ("image/gif", b"GIF89a" + b"0" * 32),
+    ("image/webp", b"RIFF0000WEBP" + b"0" * 32),
+    (None, bytes_imagen(FIRMA_PNG)),
+])
+def test_validar_imagen_formato_no_admitido(mime, datos):
+    imagen, aviso = ui_agente.validar_imagen(mime, datos)
+
+    assert imagen is None
+    assert aviso == ui_agente.AVISO_IMAGEN_FORMATO
+
+
+@pytest.mark.parametrize("mime, datos", [
+    ("image/png", bytes_imagen(FIRMA_JPEG)),
+    ("image/png", b"GIF89a" + b"0" * 32),
+    ("image/jpeg", b"esto no es una imagen"),
+    ("image/png", b""),
+])
+def test_validar_imagen_mime_falseado(mime, datos):
+    imagen, aviso = ui_agente.validar_imagen(mime, datos)
+
+    assert imagen is None
+    assert aviso == ui_agente.AVISO_IMAGEN_FORMATO
+
+
+def test_validar_imagen_supera_limite():
+    datos = bytes_imagen(FIRMA_PNG, config.IMAGEN_MAX_BYTES + 1)
+
+    imagen, aviso = ui_agente.validar_imagen("image/png", datos)
+
+    assert imagen is None
+    assert aviso == ui_agente.AVISO_IMAGEN_TAMANO
+
+
+def test_validar_imagen_en_limite_exacto():
+    datos = bytes_imagen(FIRMA_JPEG, config.IMAGEN_MAX_BYTES)
+
+    imagen, aviso = ui_agente.validar_imagen("image/jpeg", datos)
+
+    assert imagen == {"bytes": datos, "mime": "image/jpeg"}
+    assert aviso is None
+
+
+@pytest.mark.parametrize("mime, datos, aviso", [
+    ("image/gif", b"GIF89a" + b"0" * 32, "AVISO_IMAGEN_FORMATO"),
+    ("image/png", bytes_imagen(FIRMA_PNG, config.IMAGEN_MAX_BYTES + 1),
+     "AVISO_IMAGEN_TAMANO"),
+], ids=["formato", "tamano"])
+def test_imagen_invalida_no_envia_mensaje(sesion, procesar_falso, mime, datos, aviso):
+    ui_agente.enviar_turno(sesion, "Mira esta foto", mime, datos, procesar_falso)
+
+    assert procesar_falso.llamadas == []
+    assert [(m["rol"], m["texto"]) for m in sesion["mensajes"]] == [
+        (ui_agente.ROL_AVISO, getattr(ui_agente, aviso))]
+    assert sesion["ultimo"] is None
+    assert sesion["uploader_key"] == 0
+
+
+def test_imagen_se_pasa_en_formato_contrato(sesion, procesar_falso):
+    datos = bytes_imagen(FIRMA_PNG)
+    procesar_falso.respuestas = [{"respuesta": "Veo el estanque."}]
+
+    ui_agente.enviar_turno(sesion, "¿Qué es esto?", "image/png", datos, procesar_falso)
+
+    imagen = procesar_falso.llamadas[0]["imagen"]
+    assert imagen == {"bytes": datos, "mime": "image/png"}
+    assert set(imagen) == {"bytes", "mime"}
+    # La UI no describe la imagen: solo el usuario y la respuesta del agente.
+    assert [(m["rol"], m["texto"]) for m in sesion["mensajes"]] == [
+        (ui_agente.ROL_USUARIO, "¿Qué es esto?"),
+        (ui_agente.ROL_AGENTE, "Veo el estanque."),
+    ]
+
+
+def test_imagen_se_descarta_tras_envio(sesion, procesar_falso):
+    datos = bytes_imagen(FIRMA_JPEG)
+
+    ui_agente.enviar_turno(sesion, "Con foto", "image/jpeg", datos, procesar_falso)
+    assert sesion["uploader_key"] == 1
+
+    ui_agente.enviar_turno(sesion, "Sin foto", None, None, procesar_falso)
+    assert sesion["uploader_key"] == 1
+    assert procesar_falso.llamadas[1]["imagen"] is None
+
+
+CLAVE_GEMINI = "clave-gemini-de-prueba-123"
+CLAVE_AEMET = "token-aemet-de-prueba-456"
+CLAVE_GOOGLE = "AIza" + "B" * 35
+
+
+@pytest.fixture
+def entorno_secretos(monkeypatch):
+    """Claves falsas en el entorno; nunca se usan las reales."""
+    for variable in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "AEMET_API_KEY"):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", CLAVE_GEMINI)
+    monkeypatch.setenv("AEMET_API_KEY", CLAVE_AEMET)
+
+
+def test_ocultar_secretos_valores_de_entorno(entorno_secretos):
+    texto = f"Fallo con {CLAVE_GEMINI} y {CLAVE_AEMET}."
+
+    oculto = ui_agente.ocultar_secretos(texto)
+
+    assert CLAVE_GEMINI not in oculto and CLAVE_AEMET not in oculto
+    assert oculto == f"Fallo con {config.MASCARA} y {config.MASCARA}."
+
+
+def test_ocultar_secretos_patron_google(entorno_secretos):
+    corta = "AIza" + "C" * 10
+
+    oculto = ui_agente.ocultar_secretos(f"key={CLAVE_GOOGLE} y {corta}")
+
+    assert oculto == f"key={config.MASCARA} y {corta}"
+
+
+def test_ocultar_secretos_en_error_preview_y_respuesta(
+        entorno_secretos, sesion, procesar_falso, aprobar_falso):
+    procesar_falso.respuestas = [{
+        "respuesta": f"Respuesta con {CLAVE_GEMINI}",
+        "plan": [f"Paso con {CLAVE_AEMET}"],
+        "pendiente_aprobacion": True,
+        "error": f"Error con {CLAVE_GOOGLE}",
+        "traza": [evento("tool", "api_dominio", {"comentario": CLAVE_GEMINI},
+                         "error", f"preview {CLAVE_AEMET}")],
+    }]
+
+    ui_agente.enviar_turno(sesion, "Plan", None, None, procesar_falso)
+
+    ultimo = sesion["ultimo"]
+    assert ultimo["respuesta"] == f"Respuesta con {config.MASCARA}"
+    assert ultimo["plan"] == [f"Paso con {config.MASCARA}"]
+    assert ultimo["error"] == f"Error con {config.MASCARA}"
+    assert ultimo["traza"][0]["preview"] == f"preview {config.MASCARA}"
+    assert ultimo["traza"][0]["args"]["comentario"] == config.MASCARA
+    # Lo que se pinta en el chat sale ya enmascarado.
+    visible = str(sesion["mensajes"]) + str(ui_agente.estado_depuracion(sesion))
+    for clave in (CLAVE_GEMINI, CLAVE_AEMET, CLAVE_GOOGLE):
+        assert clave not in visible
+
+    # El comentario de la decisión que se lee de la traza también.
+    aprobar_falso.respuesta = {"traza": [evento(
+        "hitl", "rechazar", {"comentario": f"ojo {CLAVE_GEMINI}"})]}
+    ui_agente.decidir(sesion, False, "", aprobar_falso)
+
+    assert ui_agente.estado_depuracion(sesion)["comentario"] == (
+        f"ojo {config.MASCARA}")
+
+
+def test_nueva_conversacion_genera_id_distinto(monkeypatch):
+    repetido = uuid.UUID("11111111-1111-4111-8111-111111111111")
+    nuevo = uuid.UUID("22222222-2222-4222-8222-222222222222")
+    generados = iter([repetido, repetido, nuevo])
+    monkeypatch.setattr(ui_agente.uuid, "uuid4", lambda: next(generados))
+
+    sesion = ui_agente.nueva_sesion([str(repetido)])
+
+    assert sesion["thread_id"] == str(nuevo)
+
+
+def test_nueva_conversacion_vacia_estado(sesion_con_plan):
+    sesion_con_plan["uploader_key"] = 3
+    previos = [sesion_con_plan["thread_id"]]
+
+    nueva = ui_agente.nueva_sesion(previos)
+
+    assert nueva["thread_id"] not in previos
+    assert nueva["mensajes"] == []
+    assert nueva["ultimo"] is None
+    assert nueva["uploader_key"] == 0
+    assert ui_agente.pendiente(nueva) is False
+
+
+def test_nueva_conversacion_con_plan_pendiente_no_decide(sesion_con_plan, aprobar_falso):
+    mensajes_previos = [dict(m) for m in sesion_con_plan["mensajes"]]
+
+    ui_agente.nueva_sesion([sesion_con_plan["thread_id"]])
+
+    assert aprobar_falso.llamadas == []
+    # El hilo anterior queda tal cual: pendiente y sin mensaje de decisión.
+    assert ui_agente.pendiente(sesion_con_plan) is True
+    assert sesion_con_plan["mensajes"] == mensajes_previos
+    textos = [m["texto"] for m in sesion_con_plan["mensajes"]]
+    assert ui_agente.MENSAJE_PLAN_APROBADO not in textos
+    assert ui_agente.MENSAJE_PLAN_RECHAZADO not in textos
+
+
 def test_decision_usa_mismo_thread_id(sesion_con_plan, procesar_falso, aprobar_falso):
     ui_agente.decidir(sesion_con_plan, False, "", aprobar_falso)
 

@@ -1,6 +1,7 @@
 """Streamlit del agente: chat, aprobación del plan y panel de depuración."""
 import streamlit as st
 
+import config
 from src import agent
 from src import ui_agente
 
@@ -21,6 +22,8 @@ def _sesion() -> dict:
         st.session_state["agente"] = ui_agente.nueva_sesion()
     if "comentario_n" not in st.session_state:
         st.session_state["comentario_n"] = 0
+    if "ids_previos" not in st.session_state:
+        st.session_state["ids_previos"] = []
     return st.session_state["agente"]
 
 
@@ -41,9 +44,10 @@ def _pintar_mensaje(mensaje: dict) -> None:
 
 
 def _sidebar(sesion: dict) -> None:
-    """Comentario y botones de decisión sobre el plan pendiente."""
+    """Nueva conversación, comentario y botones de decisión sobre el plan."""
     hay_plan = ui_agente.pendiente(sesion)
     with st.sidebar:
+        nueva = st.button("Nueva conversación", key="nueva_conversacion")
         st.header("Plan propuesto")
         comentario = st.text_area(
             "Comentario (opcional)",
@@ -55,6 +59,14 @@ def _sidebar(sesion: dict) -> None:
             "Aprobar", key="aprobar", disabled=not hay_plan, type="primary")
         rechazar = columna_rechazar.button(
             "Rechazar", key="rechazar", disabled=not hay_plan)
+
+    if nueva:
+        # El hilo anterior queda tal cual; si tenía un plan pendiente, sin decidir.
+        st.session_state["ids_previos"].append(sesion["thread_id"])
+        st.session_state["agente"] = ui_agente.nueva_sesion(
+            st.session_state["ids_previos"])
+        st.session_state["comentario_n"] += 1
+        st.rerun()
 
     if aprobar or rechazar:
         with st.spinner("Enviando la decisión al agente..."):
@@ -80,6 +92,27 @@ def _depuracion(sesion: dict) -> None:
             st.markdown(f"**Comentario de la decisión:** {datos['comentario']}")
 
 
+def _adjunto(sesion: dict) -> tuple[str | None, bytes | None]:
+    """Selector de imagen con miniatura o aviso; devuelve mime y bytes."""
+    archivo = st.file_uploader(
+        "Adjuntar imagen (opcional, PNG o JPG)",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=False,
+        # Cambia al enviar una imagen y al empezar una conversación nueva.
+        key=f"imagen_{sesion['thread_id']}_{sesion['uploader_key']}",
+    )
+    if archivo is None:
+        return None, None
+
+    mime, datos = archivo.type, archivo.getvalue()
+    imagen, aviso = ui_agente.validar_imagen(mime, datos)
+    if aviso:
+        st.warning(aviso)
+    else:
+        st.image(imagen["bytes"], width=config.IMAGEN_ANCHO_MINIATURA)
+    return mime, datos
+
+
 def main() -> None:
     """Punto de entrada de la app de Streamlit."""
     st.title("Agente del Parque de El Retiro")
@@ -94,12 +127,13 @@ def main() -> None:
         st.warning(ui_agente.AVISO_PLAN_PENDIENTE)
 
     _depuracion(sesion)
+    mime, datos = _adjunto(sesion)
 
     texto = st.chat_input(
         "Pregunta o pide un plan de visita...", key="chat", disabled=bloqueado)
     if texto:
         with st.spinner("El agente está trabajando..."):
-            ui_agente.enviar_turno(sesion, texto, None, None, agent.procesar_turno)
+            ui_agente.enviar_turno(sesion, texto, mime, datos, agent.procesar_turno)
         st.rerun()
 
 
