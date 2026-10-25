@@ -1,10 +1,12 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from config import (
     HORA_APERTURA,
     HORA_CIERRE_INVIERNO,
     HORA_CIERRE_VERANO,
     MESES_VERANO,
+    ZONA_HORARIA
 )
 
 
@@ -31,7 +33,7 @@ def hora_actual(args=None) -> dict:
     """Devuelve la fecha y hora local y el estado del parque."""
 
     try:
-        ahora = datetime.now()
+        ahora = datetime.now(ZoneInfo(ZONA_HORARIA))
 
         hora = ahora.strftime("%H:%M")
         estado = estado_parque(ahora)
