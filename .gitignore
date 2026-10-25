@@ -1,3 +1,4 @@
+venv/
 .venv/
 __pycache__/
 *.pyc
@@ -13,3 +14,5 @@ guia_arranque_equipo.md
 briefing_pb2_sdd_v2.md
 probar_cli.py
 .claude/settings.local.json
+# Extras
+*.ipynb

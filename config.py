@@ -1,19 +1,24 @@
 """Configuracion centralizada del sistema RAG - Parque de El Retiro."""
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 
 # --- Rutas ---
 DATA_DIR = "data"
-CHROMA_DIR = os.getenv("CHROMA_DIR", "chroma")
+CHROMA_DIR = "chroma"
 COLLECTION_NAME = "retiro_madrid"
+PROYECT_DIR=Path(__file__).resolve().parent
+FALLBACK_JSON=PROYECT_DIR/'src'/'tools'/'fallback'/'aemet.json'
+IMAGE_DEFAULT_NAME='Historia_Retiro.png'
+IMAGE_DEFAULT_PATH=PROYECT_DIR/'src'/'tools'/'fallback'/IMAGE_DEFAULT_NAME
 
 # Modelos estables seleccionados para el MVP.
 # gemini-embedding-001 devuelve un vector por texto y mantiene compatibilidad
 # con el procesamiento por lotes actual de embed.py.
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.6-flash")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
+LLM_MODEL = "gemini-3.6-flash"
+EMBEDDING_MODEL = "gemini-embedding-001"
 
 # --- Chunking ---
 CHUNK_SIZE = 500
@@ -24,21 +29,13 @@ EMBED_BATCH_SIZE = 32  # chunks por lote enviado a la API de Gemini embeddings
 
 # Control de cuota para indexaciones grandes con el nivel gratuito de Gemini.
 # Solo se aplica cuando Gemini responde con 429 RESOURCE_EXHAUSTED.
-EMBED_MAX_RETRIES = int(os.getenv("EMBED_MAX_RETRIES", "3"))
-EMBED_RETRY_DELAY_SECONDS = float(
-    os.getenv("EMBED_RETRY_DELAY_SECONDS", "60")
-)
+EMBED_MAX_RETRIES = 3
+EMBED_RETRY_DELAY_SECONDS = 60
 
 # Checkpoint local para reanudar indexaciones interrumpidas.
-EMBED_CHECKPOINT_PATH = os.getenv(
-    "EMBED_CHECKPOINT_PATH",
-    ".cache/embeddings/retiro_madrid.json",
-)
+EMBED_CHECKPOINT_PATH = ".cache/embeddings/retiro_madrid.json"
 
-EMBED_RESUME = (
-    os.getenv("EMBED_RESUME", "true").strip().lower()
-    in {"1", "true", "yes", "on"}
-)
+EMBED_RESUME = "true"
 
 # --- Indexación ---
 INDEX_BATCH_SIZE = 100  # vectores por lote en collection.upsert()
@@ -54,14 +51,24 @@ TOP_K = 3
 MAX_CHUNKS = None
 
 # Fichero JSONL donde se anota cada consulta (output/ está en .gitignore).
-LOG_FILE = os.getenv("RAG_LOG_FILE", "output/consultas.jsonl")
+LOG_FILE = "output/consultas.jsonl"
 
 
 # --- Contexto de visita (AEMET y horario del parque) ---
 ESTACION_RETIRO = "3195"  # estación AEMET Madrid-Retiro
+CODIGO_MUNICIPAL="28079"
+AREA_ALERTA="72"
+
 URL_AEMET = (
     "https://opendata.aemet.es/opendata/api/observacion/convencional/datos/estacion/"
 )
+
+BASE_URL_AEMET = "https://opendata.aemet.es/opendata/api/"
+
+EP_OBSERVACIONES= f"observacion/convencional/datos/estacion/{ESTACION_RETIRO}"
+EP_PREVISIONES= f"prediccion/especifica/municipio/horaria/{CODIGO_MUNICIPAL}"
+EP_AVISOS=f"avisos_cap/ultimoelaborado/area/{AREA_ALERTA}"
+
 TIEMPO_MAXIMO = 8  # segundos de espera por petición a AEMET
 
 # Umbrales de viento del protocolo del Retiro 2026
@@ -89,7 +96,7 @@ AVISO_NO_OFICIAL = (
 # y la abstención recae en el centinela del prompt: es preferible a inventarse un
 # umbral que silencie respuestas correctas. Calibrarlo con
 # scripts/validation/calibrar_umbral.py sobre el índice real y fijarlo en .env.
-SCORE_MINIMO = float(os.getenv("RAG_SCORE_MINIMO", "0.0"))
+SCORE_MINIMO = 0.65
 
 # Texto fijo en español. Si el banco de preguntas crece en otros idiomas,
 # convendría traducirlo según el idioma detectado en la consulta.
@@ -100,14 +107,25 @@ MENSAJE_ABSTENCION = (
 )
 
 # --- Índice preconstruido ---
-INDEX_URL = os.getenv(
-    "RETIRO_INDEX_URL",
-    "https://github.com/adxalex/retiro_rag/releases/download/"
-    "index-v1/chroma_retiro_madrid.zip",
-)
+INDEX_URL = "https://github.com/adxalex/retiro_rag/releases/download/index-v1/chroma_retiro_madrid.zip"
 # SHA-256 esperado de chroma_retiro_madrid.zip.
 INDEX_SHA256 = "176c11459f4d681da77b92b5b62daabefb85c628d612d19da099755f2143a882"
 
 # Límites de ejecución del agente
 MAX_ITER = 6
 MAX_STEPS_ESPECIALISTA = 3
+
+# --- Interfaz Streamlit del agente ---
+IMAGEN_MAX_BYTES = 5 * 1024 * 1024  # 5 MB; el valor exacto se acepta
+IMAGEN_MIME_PERMITIDOS = ("image/png", "image/jpeg")
+IMAGEN_ANCHO_MINIATURA = 120  # píxeles
+# Primeros bytes que identifican cada formato admitido.
+FIRMAS_IMAGEN = {
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/jpeg": b"\xff\xd8\xff",
+}
+# Variables de entorno cuyo valor nunca debe llegar a la pantalla.
+VARIABLES_SECRETAS = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "AEMET_API_KEY")
+MASCARA = "***"
+# Campos de cada evento de traza que muestra el panel de depuración.
+CAMPOS_TRAZA = ("ts", "origen", "nombre", "status", "preview")

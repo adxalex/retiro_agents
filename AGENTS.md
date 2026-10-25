@@ -11,6 +11,7 @@ Base actual: asistente RAG en español sobre el Parque de El Retiro (Madrid): hi
 | `config.py` | Constantes centralizadas: rutas, modelos, chunking, lotes y reintentos de embeddings, `TOP_K`, umbral de abstención, AEMET/horario del parque e índice preconstruido |
 | `main.py` | CLI: `--index` (`--recreate-index`, `--dry-run`), `--query` (solo retrieval), `--ask` (RAG completo; `--top-k`, `--category`, `--score-minimo`, `--contexto`, `--json`) y `--saludo` |
 | `app.py` | App Streamlit: banner del tiempo, chat, contexto recuperado y tabla de métricas |
+| `app_agent.py` | App Streamlit del agente: chat con imagen opcional, Aprobar/Rechazar con comentario en la sidebar, expander de depuración y nueva conversación; solo llama a `procesar_turno` y `aprobar_plan` |
 | `src/load.py` | Carga PDF, Markdown y CSV desde `DATA_DIR` y asigna `category`/`corpus_group` según el manifiesto del contrato |
 | `src/chunk.py` | Fragmentación en chunks trazables, con limpieza de líneas repetidas y validación de configuración |
 | `src/embed.py` | Embeddings Gemini por lotes con reintentos ante 429, `embed_query` y `limitar_chunks` |
@@ -23,6 +24,7 @@ Base actual: asistente RAG en español sobre el Parque de El Retiro (Madrid): hi
 | `src/fuentes.py` | Nombres legibles y organismo de cada fuente para las citas |
 | `src/contexto_visita.py` | Saludo contextual: hora de Madrid, horario del parque y viento AEMET frente a los umbrales del protocolo |
 | `src/logging_utils.py` | Registro JSONL de consultas, cronómetro y resumen de métricas |
+| `src/ui_agente.py` | Lógica pura de la app del agente, sin Streamlit ni grafo: sesión, validación de imagen, envío de turnos y decisiones, ocultación de secretos y datos de depuración |
 | `scripts/index_corpus.py` | CLI alternativa de indexación (`--dry-run`, `--keep-existing`, `--json`) |
 | `scripts/download_index.py` | Descarga e instala el índice Chroma preconstruido (verifica SHA-256) |
 | `scripts/validation/` | Validación de corpus, contrato PDF, modelos Gemini, smoke test de embeddings, evaluación de preguntas y calibración del umbral |
@@ -39,6 +41,7 @@ Base actual: asistente RAG en español sobre el Parque de El Retiro (Madrid): hi
 - Preguntar: `python main.py --ask "..."` ⚠️ gasta API
 - Saludo con el tiempo del Retiro: `python main.py --saludo` (consulta AEMET con `AEMET_API_KEY`, no usa Gemini)
 - Web: `streamlit run app.py` ⚠️ gasta API
+- Web del agente: `streamlit run app_agent.py` ⚠️ gasta API
 
 ## Flujo SDD de este repositorio
 - Constitución: `docs/constitution.md`. Léela siempre.
