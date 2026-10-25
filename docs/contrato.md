@@ -30,7 +30,7 @@ Reglas:
 ## 2. Estado (src/state.py), dos niveles
 
 - Conversación (persiste): thread_id, historial, done.
-- Pedido (se reinicia al rechazar): pedido, notas (dict especialista -> texto), respuesta, plan, aprobado (bool | None), pasos (int), traza (list).
+- Pedido (se reinicia al rechazar): pedido, notas (dict especialista -> texto), respuesta, plan, aprobado (bool | None), pasos (int), pasos_especialista (dict especialista -> int), traza (list), imagen (dict | None), comentario_aprobacion (str).
 
 ## 3. Tools (src/tools/__init__.py)
 
@@ -43,9 +43,10 @@ Devuelve: {"tool": nombre, "status": "ok" | "error" | "blocked", "data": ..., "e
 
 Tools:
 - rag_ask: args {"pregunta": str}. Llama a responder(), no a la función rag_ask() del RAG, para conservar fuentes y citas. data = {respuesta, fuentes, citas, abstuvo, motivo_abstencion}.
-- api_dominio: args {}. data incluye "origen": "aemet" | "respaldo" y los campos de la observación.
-- hora_actual: args {}. data = {"hora_madrid": "HH:MM", "estado_parque": str}.
-- describir_imagen: args {"imagen": {"bytes", "mime"}}. data = str (descripción).
+- api_dominio: args {}. data = {"observaciones": dict | None, "previsiones": dict | None, "avisos": dict | None, "origen": "aemet" | "respaldo"}. None significa "no disponible", no "no hay": un aviso None no quiere decir que no haya avisos.
+- hora_actual: args {}. data = {"hora_madrid": "HH:MM", "estado_parque": "Abierto" | "Cerrado"}. La hora es la de Madrid.
+- describir_imagen: args {"imagen": {"bytes": bytes, "mime": "image/png" | "image/jpeg"}}. data = str (descripción). Si el argumento no es válido, la tool usa la imagen de demo.
+
 
 ## 4. Traza
 
@@ -54,6 +55,8 @@ Cada evento: {"ts": ISO 8601, "origen": "supervisor" | "tool" | "hitl", "nombre"
 - supervisor: nombre = especialista elegido.
 - tool: nombre = nombre de la tool.
 - hitl: nombre = "pausa" | "aprobar" | "rechazar".
+- La traza nunca contiene bytes de imagen: en args, una imagen se registra como {"mime": str, "bytes_len": int}.
+- procesar_turno devuelve los eventos del turno. aprobar_plan devuelve los eventos del turno más el de la decisión (aprobar o rechazar).
 
 ## 5. Límites (config.py)
 
