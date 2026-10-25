@@ -1,0 +1,25 @@
+[
+  {
+    "document_id": "guia-aves-retiro",
+    "text": "Las aves de los espacios verdes de Madrid encuentran alimento, refugio y lugares adecuados para reproducirse.",
+    "source": "flora_fauna__guia_aves_comunes__madrid__v01.pdf",
+    "category": "flora_fauna",
+    "corpus_group": "flora_fauna_arte_cultura_actividades",
+    "page": 1
+  },
+  {
+    "document_id": "guia-aves-retiro",
+    "text": "El petirrojo europeo puede reconocerse por la coloración anaranjada del pecho y de la cara.",
+    "source": "flora_fauna__guia_aves_comunes__madrid__v01.pdf",
+    "category": "flora_fauna",
+    "corpus_group": "flora_fauna_arte_cultura_actividades",
+    "page": 2
+  },
+  {
+    "document_id": "retiro-paisaje-de-la-luz",
+    "text": "El Parque del Retiro forma parte del Paisaje de la Luz y mantiene una relación histórica con el Paseo del Prado.",
+    "source": "arte_cultura__retiro_paisaje_de_la_luz__v01.md",
+    "category": "arte_cultura",
+    "corpus_group": "flora_fauna_arte_cultura_actividades"
+   }
+]

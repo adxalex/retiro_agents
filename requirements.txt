@@ -1,0 +1,13 @@
+langchain
+langchain-community
+langchain-google-genai
+langchain-text-splitters
+google-genai
+chromadb
+streamlit
+python-dotenv
+pypdf
+pandas
+requests
+fonttools
+langgraph
