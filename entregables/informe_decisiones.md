@@ -1,466 +1,166 @@
-# Informe de decisiones · Retiro RAG
+# Informe de decisiones · Agente del Retiro (Project Break 2)
 
-**Estado:** plantilla. Completar con resultados reales antes de la presentación.
+El agente responde preguntas sobre el Parque de El Retiro y propone planes de visita que una persona debe aprobar o rechazar antes de darlos por cerrados.
+Está construido con LangGraph sobre el RAG del proyecto anterior. El RAG base está documentado en [informe_pb1_rag.md](informe_pb1_rag.md).
+El equipo se repartió el trabajo en tres bloques: Mihaela, el núcleo del agente (`src/graph.py`, `src/agent.py`, `src/state.py`); Guillermo, las tools (`src/tools/`); y Adixon, la interfaz (`app_agent.py`, `src/ui_agente.py`) y el contrato.
+Los tres bloques se comunican solo a través del contrato de `docs/contrato.md`: `procesar_turno` y `aprobar_plan` en un sentido, `ejecutar_tool` en el otro.
+Todas las cifras de este informe se comprobaron en el repositorio. En cada sección, la evidencia automática (tests) va separada de la manual (prueba real).
 
-## 1. Resumen
+## 1. Grafo
 
-Describir el dominio, corpus, formatos y flujo RAG implementado.
+**Flujo.** `supervisor → especialistas (normas, entorno) → sintetizar → aplicar`.
+- `normas` consulta el RAG con la tool `rag_ask`.
+- `entorno` consulta `hora_actual` y `api_dominio`, y `describir_imagen` solo si el turno trae imagen.
+- `sintetizar` une las notas y extrae el plan. Si el plan queda vacío, el grafo termina sin pausa (`_ruta_tras_sintesis`).
+- El grafo se compila con `MemorySaver` e `interrupt_before=["aplicar"]` (`build_graph` en `src/graph.py`). Así, cada plan se detiene antes de aplicarse y la conversación se recupera por `thread_id`.
 
-## 2. Corpus
+**Límites.** Están en `config.py`: `MAX_ITER = 6` pasadas del supervisor y `MAX_STEPS_ESPECIALISTA = 3` por especialista. El supervisor reserva la última pasada para `sintetizar`, de modo que nunca supera el límite.
 
-- Número final de documentos:
-- Formatos:
-- Categorías:
-- Criterios de selección:
-- Limitaciones:
+**Fallback del supervisor.** El supervisor pide la ruta al LLM. Si el LLM falla, responde algo que no es `normas`, `entorno` ni `sintetizar`, o elige un especialista agotado, Python usa `_ruta_fallback`. Esa función elige por palabras clave de la petición y por los especialistas que faltan.
 
-## 3. Experimento de chunking
+**Decisión: el modelo propone, Python decide.** El LLM sugiere rutas y redacta notas. Python valida cada ruta, aplica los límites, decide si hay plan y es el único que pone `done = True`, en el nodo `aplicar` y solo si `aprobado is True`. La síntesis nunca marca `done`.
 
-Comparar al menos dos configuraciones sobre los mismos documentos y preguntas.
+**Evidencia automática** (`tests/test_graph.py`, `tests/test_agent.py`):
+- `test_max_iter_es_seis` y `test_max_steps_especialista_es_tres`
+- `test_fallback_sintetiza_al_alcanzar_max_iter` y `test_supervisor_reserva_la_ultima_pasada_para_sintesis`
+- `test_aplicar_marca_done_true_con_plan_aprobado`, `test_aplicar_no_completa_un_plan_rechazado` y `test_aplicar_no_completa_sin_aprobacion_explicita`
+- `test_supervisor_respeta_limite_de_iteraciones`
 
-### Configuración A
+## 2. Tools
 
-- `CHUNK_SIZE`:
-- `CHUNK_OVERLAP`:
-- Número de chunks:
-- Preguntas:
-- Resultados:
+**Allowlist.** `TOOL_REGISTRY` en `src/tools/__init__.py` contiene `rag_ask`, `api_dominio`, `hora_actual` y `describir_imagen`. Si se pide un nombre que no está, `ejecutar_tool` devuelve `status = "blocked"` sin ejecutar nada. Además, cada especialista llama solo a sus propias tools, fijadas en el código de su nodo.
 
-### Configuración B
+**Salida homogénea.** `ejecutar_tool` nunca lanza excepciones. Devuelve siempre `{tool, status, data, error, traza}`, con `status` igual a `ok`, `error` o `blocked`, y un evento de traza ya construido.
 
-- `CHUNK_SIZE`:
-- `CHUNK_OVERLAP`:
-- Número de chunks:
-- Preguntas:
-- Resultados:
+**Validación de argumentos** (`args_validation`):
+- `args` tiene que ser un diccionario.
+- `rag_ask` recibe solo `pregunta`, como texto limpio.
+- `api_dominio` y `hora_actual` no reciben argumentos.
+- `describir_imagen` exige `mime` PNG o JPEG y bytes no vacíos.
 
-### Decisión
+Una decisión discutible: si la imagen no es válida, la tool describe una imagen por defecto (`IMAGE_DEFAULT_PATH`) en lugar de devolver un error. En la práctica no se llega a ese caso, porque el grafo solo llama a la tool si hay imagen y la interfaz valida la imagen antes de enviarla (sección 4).
 
-Indicar la configuración adoptada y justificarla considerando contexto, ruido y coste.
+**AEMET con respaldo** (`src/tools/aemet_api.py`):
+- `api_dominio` pide primero las observaciones a AEMET. Si falla, las lee de `src/tools/fallback/aemet.json` (`FALLBACK_JSON`).
+- El campo `origen` dice de dónde vienen los datos: `aemet` o `respaldo`.
+- Previsiones y avisos solo se consultan si AEMET respondió. Si fallan, o si se usó el respaldo, quedan en `None`, que significa "no disponible".
 
-## 4. Experimento de retrieval
+**Evidencia automática:**
+- `tests/test_aemet_api.py`: `test_api_dominio_returns_aemet_data`, `test_api_dominio_uses_fallback_when_observations_fail`, `test_api_dominio_keeps_observations_if_forecast_or_alerts_fail` y `test_api_dominio_reports_fallback_failure`.
+- `tests/test_rag_tool.py`, `tests/test_hora_actual.py` y `tests/test_image_decrip.py`: cubren cada tool por separado.
 
-### Cómo funciona el retrieval
+**Evidencia automática del registro** (`tests/test_init.py`, PR #15):
+- Allowlist: `test_ejecutar_tool_blocks_unknown_tool`.
+- Salida homogénea: `test_ejecutar_tool_returns_success_and_trace`, `test_ejecutar_tool_returns_error_when_tool_reports_error` y `test_ejecutar_tool_catches_exception_from_validation_or_tool`.
+- Validación de la respuesta de la tool: `test_ejecutar_tool_rejects_non_dict_response` y `test_ejecutar_tool_rejects_response_missing_required_fields`.
+- Vista previa de la traza: `test_ejecutar_tool_limits_trace_preview_to_200_characters`.
+- Validación de argumentos: `test_args_validation_rejects_non_dict_args`, `test_args_validation_rag_ask_strips_question`, `test_args_validation_unknown_tool_raises_value_error` y `test_args_validation_image_falls_back_when_image_is_invalid`.
 
-`retrieve()` convierte la consulta en un vector con `embed_query()`, la busca en
-la colección `retiro_madrid` de ChromaDB y devuelve los `top_k` chunks más
-próximos, ordenados de mayor a menor relevancia.
+## 3. HITL: aprobar y rechazar
 
-Cada resultado conserva el chunk indexado completo (`chunk_id`, `document_id`,
-`text`, `source`, `chunk_index`, `category`, `corpus_group` y `page` cuando
-existe) y añade un campo `score`, según el contrato 3.
+**Cómo funciona.**
+1. Cuando la síntesis produce un plan, el grafo se detiene antes de `aplicar` y registra el evento `hitl/pausa` con status `pending`.
+2. `aprobar_plan(thread_id, aprobado, comentario)` guarda la decisión y reanuda el mismo hilo.
+3. Al aprobar, `aplicar` registra `hitl/aprobar` y pone `done = True`.
+4. Al rechazar, registra `hitl/rechazar`, borra el pedido, las notas, la respuesta y el plan, y deja `done = False`. La conversación sigue en el mismo `thread_id`.
+5. El comentario queda en `args.comentario` del evento.
 
-### De distancia a score
+**Evidencia manual** (prueba real con Gemini en `streamlit run app_agent.py`):
 
-ChromaDB devuelve una distancia: cuanto menor, más parecido. El contrato exige
-un `score` donde un valor mayor signifique más relevancia, así que se aplica:
-
-    score = max(0.0, min(1.0, 1.0 - distancia))
-
-El recorte entre 0 y 1 evita valores fuera de rango por errores de precisión. La
-fórmula solo es válida con métrica coseno, que es la que usa la colección
-(`HNSW_SPACE = "cosine"`). `retrieve.py` comprueba esa constante y lanza un error
-explícito si alguien la cambia, para que la conversión no quede silenciosamente
-mal.
-
-### Filtro por metadata
-
-`retrieve()` acepta un parámetro `where` que se traslada a ChromaDB, lo que
-permite restringir la búsqueda a una categoría:
-
-    python main.py --query "¿qué pasa con alerta roja?" --category seguridad
-
-Es útil para depurar la cobertura por bloque temático y queda disponible para
-futuras mejoras, como enrutar preguntas por tipo.
-
-### Numeración de las citas
-
-El prompt numera los fragmentos del 1 al `top_k`, de modo que el modelo puede
-citar `[3]` aunque los tres fragmentos procedan del mismo documento. La lista
-`fuentes` agrupa por documento y, por tanto, no sirve para resolver esas citas.
-Para evitar que una cita quede sin referencia, `responder()` devuelve también
-`citas`, con la correspondencia número → documento, página, `chunk_id` y `score`.
-
-El fallo se detectó durante las pruebas con el índice real: una respuesta citaba
-`[1]` y `[3]` mientras la lista de fuentes mostraba un único documento.
-
-### Resultados por pregunta
-
-Medición sobre el banco de 25 preguntas de `queries/banco_preguntas_bloque_c.md`
-con el índice real: 1.177 chunks, `gemini-embedding-001`, dimensión 3.072.
-
-| Pregunta | K | Score top-1 | Mejor fuente | ¿Tiene sentido? | Ruido |
-|---|---:|---:|---|---|---|
-| ¿Qué horario tiene el parque en verano? | 3 | 0,721 | `informacion_practica_guia_visitante_retiro.pdf` | Sí, es la fuente correcta | Aparece `flora_fauna__senda_botanica` sin relación |
-| ¿Qué rey impulsó la creación del Retiro? | 3 | 0,754 | `retiro_historia.md` | Sí | Aparece `plan_director_arbolado` |
-| Hay alerta naranja y estoy en el lago, ¿qué hago? | 3 | 0,710 | `seguridad_protocolo_alertas_retiro.pdf` | Sí, única fuente devuelta | Ninguno |
-| ¿Qué edificio es neomudéjar? (fuera de corpus) | 3 | 0,709 | `flora_fauna__plan_director_arbolado__madrid__v01.pdf` | No debe responder, y no responde | Todo el contexto es ruido |
-
-### Comparación de `TOP_K`
-
-Métrica: en cuántas preguntas aparece una fuente válida entre los `top_k` chunks
-recuperados.
-
-| `TOP_K` | Fuente única declarada | Cualquier fuente válida |
-|---:|---|---|
-| 3 | 73 % (11/15) | 94 % (15/16) |
-| 5 | 80 % (12/15) | 94 % (15/16) |
-
-La primera columna corresponde a la medición inicial, con una sola fuente
-esperada por pregunta. Al crecer el corpus, varias preguntas pasaron a tener más
-de un documento que las responde legítimamente: el edificio de las exposiciones
-del Reina Sofía, por ejemplo, aparece tanto en la guía del visitante como en el
-documento de arte y cultura. La segunda columna admite cualquiera de esas
-fuentes e incorpora al denominador la pregunta 8, que dejó de ser de abstención.
-
-El criterio se amplió **después** de observar los resultados, por lo que se
-publican ambas cifras: la estricta subestima el rendimiento y la ampliada
-refleja mejor lo que el sistema recupera.
-
-Único fallo real de retrieval: la pregunta 9 (jardín de estilo francés), que
-devuelve la senda botánica y el plan director de arbolado en lugar del documento
-que describe el Parterre Francés.
-
-### Decisión sobre `TOP_K`
-
-`TOP_K = 3` como valor predeterminado.
-
-Justificación: con el índice real, pasar de 3 a 5 no mejora el recall bajo el
-criterio de fuentes válidas (94 % en ambos casos) y solo aporta una pregunta más
-bajo el criterio estricto. A cambio, cada chunk adicional añade texto al contexto
-del LLM, lo que aumenta el coste por consulta y el riesgo de mezclar fragmentos
-poco relacionados. El valor es configurable por `.env` y por `--top-k`.
-
----
-
-## 5. Generación y grounding
-
-### Diseño del prompt
-
-`build_prompt()` construye un prompt con tres partes: instrucciones, contexto
-numerado y pregunta. Las instrucciones obligan al modelo a responder solo desde
-el contexto, a citar con `[1]`, `[2]`, a declarar cuándo un dato tiene fecha o
-procede de una fuente no oficial, y a no inventar horarios, precios ni
-distancias.
-
-Cada chunk se presenta con su número, fuente, página y categoría, lo que permite
-que las citas sean verificables y que el usuario sepa de qué documento sale cada
-afirmación.
-
-### La abstención tiene dos compuertas
-
-Durante el desarrollo se comprobó que **ChromaDB siempre devuelve vecinos**,
-también cuando el corpus no contiene la respuesta: ante una pregunta sin
-cobertura devuelve igualmente los chunks menos lejanos. Por tanto, la abstención
-no puede basarse en que la lista venga vacía. Se implementaron dos compuertas:
-
-1. **Compuerta de retrieval.** Si el mejor `score` no alcanza `RAG_SCORE_MINIMO`,
-   el sistema se abstiene sin llamar al LLM. Es determinista, reproducible y
-   ahorra el coste de la llamada.
-2. **Compuerta de generación.** El prompt obliga al modelo a devolver el
-   centinela `SIN_EVIDENCIA` cuando el contexto no sostiene la respuesta;
-   `responder()` lo detecta y lo sustituye por un mensaje claro para el usuario.
-
-La salida de `responder()` incluye siempre `abstuvo` y `motivo_abstencion`, de
-forma que se puede distinguir cuál de las dos compuertas actuó.
-
-### Calibración del umbral
-
-El umbral no se fijó a ojo. `scripts/validation/calibrar_umbral.py` ejecuta el
-banco de preguntas, compara la distribución del `score` del mejor chunk en las
-preguntas respondibles y en las de abstención, y propone el valor con más
-aciertos.
-
-| Medida | `gemini-embedding-001` |
-|---|---|
-| Score mínimo, preguntas respondibles (n=16) | 0,698 |
-| Mediana del score, preguntas respondibles | 0,747 |
-| Score máximo, preguntas respondibles | 0,782 |
-| Score mínimo, preguntas de abstención (n=9) | 0,648 |
-| Mediana del score, preguntas de abstención | 0,709 |
-| Score máximo, preguntas de abstención | 0,744 |
-| Mejor umbral posible | 0,698 (20/25 aciertos) |
-| Umbral adoptado | **0,65** (17/25 aciertos) |
-
-**Las dos distribuciones se solapan casi por completo.** Todos los scores caen
-entre 0,648 y 0,782, y cinco preguntas sin respuesta en el corpus puntúan por
-encima de 0,70, entre ellas la del evento deportivo (0,744) y la de los
-fotógrafos (0,736). El mejor umbral posible acierta 20 de 25 y deja un margen de
-0,008 sobre la pregunta respondible peor puntuada.
-
-Las cifras se recalcularon sobre la misma ejecución de `calibrar_umbral.py`
-después de reclasificar la pregunta 8 como respondible: su score (0,768) pasa de
-un grupo al otro. No se reejecutó la calibración porque el score de cada
-pregunta no cambia al reclasificarla, solo cambia el grupo al que pertenece.
-
-Se adoptó 0,65 en lugar del óptimo teórico porque un umbral ajustado a estos
-datos silenciaría cualquier respuesta correcta ligeramente peor puntuada. Con
-0,65 no se pierde ninguna respuesta válida y se descarta el caso más claramente
-irrelevante.
-
-**Conclusión:** con embeddings reales, la compuerta de score aporta poco por sí
-sola. El peso de la abstención lo lleva el centinela del prompt. Esto valida a
-posteriori la decisión de implementar dos compuertas en lugar de una.
-
-### Acierto in-corpus
-
-- Pregunta: ¿Qué fauna piscícola predomina en el Estanque Grande del Retiro?
-- Respuesta: carpas como especie principal, y peces gato y percasoles según
-  fuentes secundarias coincidentes, con el nivel de confianza que indica el
-  propio documento.
-- Fuentes: `flora_fauna__fauna_estanque_grande_retiro__fuentes_contrastadas__v01.md`
-- Evidencia: el documento de fauna contrastada recoge esas especies con su nivel
-  de confianza, que la respuesta traslada en lugar de presentarlas como
-  certezas.
-- Valoración: correcta y anclada. La respuesta reproduce la gradación de
-  confianza de la fuente, que es justo lo que pedían las instrucciones del
-  prompt.
-
-### Abstención fuera de corpus
-
-- Pregunta: ¿Qué edificio del Retiro se caracteriza por su estilo neomudéjar?
-- Resultado esperado: abstención. El término no aparece en ningún documento del
-  corpus, pese a que es un dato real que un LLM conoce por su entrenamiento.
-- Score del mejor chunk: 0,709, por encima del umbral de 0,65, de modo que la
-  compuerta de retrieval **no** detuvo la consulta.
-- Resultado obtenido: abstención, con motivo `el_modelo_no_vio_evidencia`.
-- ¿Se abstuvo correctamente?: sí.
-
-Es la evidencia directa de que ambas compuertas son necesarias: el filtro
-numérico dejó pasar la consulta y fue el centinela del prompt quien evitó que el
-modelo respondiera desde su conocimiento propio.
-
----
-
-## 6. Evaluación global
-
-- Número de preguntas: 25
-- Preguntas respondibles: 14
-- Preguntas parciales: 2
-- Preguntas de abstención: 9
-- Categorías cubiertas: historia, monumentos, jardines, flora y fauna,
-  itinerarios, información práctica y seguridad
-
-La pregunta 8 (fauna del Estanque Grande) pasó de abstención a respondible al
-integrarse la fuente contrastada de fauna. Se documenta el cambio en lugar de
-eliminar la pregunta: es un hueco de cobertura detectado por la evaluación y
-cubierto después con una fuente trazable.
-
-El banco está en `queries/banco_preguntas_bloque_c.md` y se ejecuta con
-`scripts/validation/eval_preguntas.py`. Incluye dos preguntas conversacionales
-(un visitante que busca un aseo y otro que pregunta qué hacer con alerta
-naranja) y una fuera de alcance, para comprobar que el sistema no responde a lo
-que no le corresponde.
-
-### Criterios
-
-- **Evidencia:** una fuente válida debe aparecer entre los `top_k` chunks
-  recuperados.
-- **Grounding:** la respuesta debe apoyarse solo en el contexto recuperado y
-  citar los fragmentos con `[n]`.
-- **Abstención:** en las preguntas sin cobertura, la respuesta debe declarar que
-  no dispone de esa información, sin ofrecer un dato alternativo.
-
-### Resultados
-
-| Métrica | `top_k` = 3 | `top_k` = 5 |
+| | Aprobación | Rechazo |
 |---|---|---|
-| Recall, fuente única declarada | 73 % (11/15) | 80 % (12/15) |
-| Recall, cualquier fuente válida | 94 % (15/16) | 94 % (15/16) |
-| Aciertos del mejor umbral posible | 20/25 | — |
-| Aciertos con el umbral adoptado (0,65) | 17/25 | — |
+| Captura | [hitl_aprobar.png](evidencias/pb2/hitl_aprobar.png) | [hitl_rechazar.png](evidencias/pb2/hitl_rechazar.png) |
+| `thread_id` | `194fa4ea-282b-4c32-be53-47b997ac386e` | el mismo |
+| Traza | `hitl/pausa` (`pending`) → `hitl/aprobar` (`ok`) | `hitl/pausa` (`pending`) → `hitl/rechazar` (`ok`) |
+| Comentario | "aprobado" | "no me gusta este plan" |
+| Estado final | `pendiente_aprobacion = False`, `done = True` | `pendiente_aprobacion = False`, `done = False` |
+| Mensaje en el chat | "Plan aprobado" | "Plan rechazado, puedes hacer otra petición" |
 
-Los 17/25 del umbral adoptado corresponden solo a la compuerta de score: las 16
-preguntas respondibles pasan el filtro y una de abstención se detiene en él. Las
-ocho restantes dependen del centinela del prompt, que en la prueba directa
-funcionó correctamente.
+El rechazo corresponde a la segunda petición de la misma conversación. Las dos capturas muestran el mismo `thread_id`.
 
-**Estado de la configuración:** el valor por defecto de `RAG_SCORE_MINIMO` en el
-código es 0.0, es decir, con la compuerta de score desactivada. El 0,65 se
-documenta en `.env.example` como valor recomendado y debe fijarse en el `.env`
-de cada entorno; no se aplica de forma automática.
+**Por qué la interfaz bloquea el chat con un plan pendiente.** Mientras el grafo está detenido antes de `aplicar`, `procesar_turno` no acepta un turno nuevo en ese hilo y devuelve un error de plan pendiente (`src/agent.py`).
+- Si el chat siguiera abierto, el mensaje se perdería y solo aparecería un aviso.
+- Bloquearlo hace visible que falta una decisión humana. Es el principio 5 de la constitución: el plan no se cierra sin aprobar o rechazar.
+- Los botones Aprobar y Rechazar solo se activan con un plan pendiente.
+- La interfaz no decide nada por su cuenta: lee `pendiente_aprobacion` y `done` del resultado del agente.
 
----
+**Evidencia automática:**
+- `tests/test_agent.py`: `test_el_grafo_se_pausa_antes_de_aplicar`, `test_aprobar_plan_marca_done_como_true`, `test_rechazar_plan_limpia_el_pedido` y `test_se_puede_iniciar_otro_pedido_tras_rechazar`.
+- `tests/test_app_agent.py`: `test_app_plan_pendiente_bloquea_chat_y_avisa`, `test_app_aprobar_desde_sidebar`, `test_app_rechazar_desde_sidebar` y `test_app_sin_aprobacion_automatica`.
 
-## 7. Tres fallos conocidos
+## 4. Multimodal: imagen → `describir_imagen`
 
-### Fallo 1 · Chroma siempre devuelve vecinos y los scores se solapan
+**Recorrido.**
+1. La persona adjunta una imagen en Streamlit.
+2. La interfaz la valida y la envía con `procesar_turno(texto, thread_id, imagen={"bytes", "mime"})`.
+3. El especialista `entorno` llama a `describir_imagen` y usa la descripción en su nota.
 
-- Caso: preguntas sin respuesta en el corpus, como el estilo neomudéjar (0,709)
-  o el evento deportivo (0,744), que puntúan por encima de varias preguntas
-  respondibles.
-- Causa probable: una búsqueda por vecinos más próximos no tiene noción de
-  "ninguno es relevante". Además, los embeddings comprimen todos los scores del
-  corpus en una franja estrecha, entre 0,648 y 0,782.
-- Impacto: un umbral de score no puede separar por sí solo lo respondible de lo
-  que no lo es; sin el centinela, el LLM recibiría contexto irrelevante y podría
-  construir una respuesta plausible pero infundada.
-- Posible mejora: un reranking o un clasificador de relevancia previo al LLM,
-  que use el contenido del chunk y no solo la distancia vectorial.
+**Validación en la interfaz** (`validar_imagen` en `src/ui_agente.py`; valores en `config.py`):
+- El tipo MIME tiene que estar en `IMAGEN_MIME_PERMITIDOS`: PNG o JPEG.
+- Los primeros bytes tienen que coincidir con la firma del formato (`FIRMAS_IMAGEN`). Así se detecta un archivo con la extensión cambiada.
+- El tamaño no puede superar `IMAGEN_MAX_BYTES`: 5 MB, y el valor exacto se acepta.
+- El selector admite un solo archivo.
+- Si la imagen no es válida, se muestra un aviso y el mensaje no se envía.
 
-### Fallo 2 · Preguntas con superlativos o comparaciones
+**La traza nunca lleva bytes.** En `src/graph.py`, `_args_para_traza` cambia los bytes de la imagen por `{"mime", "bytes_len"}`. Se aplica a todos los eventos de tool, tanto en `_ejecutar_tool` como en el nodo `entorno`. La tool sí recibe los bytes originales; solo se resume lo que va a la traza.
 
-- Caso: «qué fauna es *más habitual*», «cuál es la entrada *más utilizada*». El
-  corpus puede contener los elementos, pero no la comparación.
-- Causa probable: el retrieval semántico recupera fragmentos sobre el tema, pero
-  ningún documento afirma cuál predomina.
-- Impacto: riesgo de que el modelo deduzca un superlativo que ninguna fuente
-  sostiene.
-- Posible mejora: instruir al modelo para tratar los superlativos como
-  afirmaciones que requieren evidencia explícita, y clasificar estas preguntas
-  como parciales en el banco.
+**Evidencia manual:**
+- [ui_espera.png](evidencias/pb2/ui_espera.png) muestra `Plano_Retiro.png` (2,8 MB) adjunta con su miniatura, mientras se ve "El agente está trabajando...".
+- En las dos capturas de la sección 3, la traza muestra `describir_imagen` con status `ok` y una descripción en texto como vista previa.
 
-### Fallo 3 · Corpus desequilibrado y ruido dominante
+**Evidencia automática:**
+- `tests/test_ui_agente.py`: `test_validar_imagen_acepta_png_y_jpg`, `test_validar_imagen_mime_falseado`, `test_validar_imagen_supera_limite`, `test_validar_imagen_en_limite_exacto` y `test_imagen_se_pasa_en_formato_contrato`.
+- `tests/test_app_agent.py`: `test_app_selector_un_solo_archivo_png_jpg`.
+- `tests/test_image_decrip.py`: la tool en sí.
 
-- Caso: `flora_fauna__plan_director_arbolado__madrid__v01.pdf` aparece entre los
-  resultados de 13 de las 25 preguntas, incluidas las de horarios, monumentos y
-  protocolos de seguridad.
-- Causa probable: de los 1.177 chunks del índice, 1.082 pertenecen al grupo de
-  flora, fauna, arte y actividades, frente a 61 del bloque de itinerarios e
-  información práctica y 34 del de historia y monumentos. Un documento muy
-  extenso ocupa una proporción desmesurada del espacio vectorial.
-- Impacto: fragmentos irrelevantes ocupan plazas del `top_k` y desplazan al
-  documento correcto, lo que explica el fallo de la pregunta 9.
-- Posible mejora: equilibrar el corpus limitando el número de chunks por
-  documento, o aplicar el filtro por categoría en función del tipo de pregunta.
+**Hueco conocido.** No hay test de `_args_para_traza`. Que no haya bytes en la traza se comprueba en el código y en las capturas.
 
----
+## 5. Fallos conocidos
 
-## 8. Logging y métricas
+### a) Gemini devolvía el contenido como lista de bloques
+- **Qué pasó.** El plan salía vacío y no aparecía ningún error.
+- **Cómo se detectó.** En la primera prueba real con Gemini en Streamlit no salía ningún plan. Una prueba con una línea de Python mostró que `content` era una lista de bloques y no un texto.
+- **Causa.** El código leía `resultado.content` y daba por hecho que era texto, pero el modelo configurado devolvía una lista de bloques.
+  - `_generar_nota_especialista` descartaba lo que no era texto y devolvía `None`, así que el especialista se quedaba con los datos sin redactar, sin viñetas de plan.
+  - En el supervisor, `.content.strip()` lanzaba una excepción, que se capturaba, y se pasaba al fallback.
+  - Como todo se capturaba, no aparecía ningún error.
+- **Arreglo.** Commit `c00f7fd` ("fix: handle Gemini text blocks in graph"): lee primero `.text`, recurre a `.content` si hace falta y, si sigue sin haber texto, usa el fallback. Entró en `develop` con los PR #10 y #11; el commit está en los dos.
+- **Tests.** `test_generar_nota_especialista_acepta_bloques_de_texto` y `test_seleccionar_ruta_acepta_bloques_de_texto` en `tests/test_graph.py`.
+- **Estado.** Arreglado.
 
-## 8. Logging y métricas
+### b) Las tools fallaban al integrarse
+- **Qué pasó.** Al conectar las tools con el registro común, las llamadas fallaban. Que fallaran todas lo indica el equipo; el repositorio muestra la causa, pero no el alcance.
+- **Cómo se detectó.** En la revisión del PR #8: el commit `ca18847` se llama "fix: comments on PR". Después se añadieron tests de cada tool en `4f14836`.
+- **Causas y arreglos**, todos en el PR #8:
+  - Firma: el registro llamaba a `TOOL_REGISTRY[nombre](**clean)`, pero las tools no aceptaban esos argumentos. `ca18847` pasa el diccionario entero, y `2db23a4` hace que `api_dominio` y `hora_actual` acepten `args`.
+  - `URL_AEMET`: la rama de tools la redefinía como URL base, y `src/contexto_visita.py` la usa para el saludo. `ca18847` crea `BASE_URL_AEMET` y deja `URL_AEMET` como estaba.
+  - Ruta del respaldo: `PROYECT_DIR = Path('..').resolve()` dependía de la carpeta desde la que se ejecutara el programa. `5d648c1` la cambia por `Path(__file__).resolve().parent`.
+- **Tests.** En el merge del PR #8 (`b85f0ed`) pytest recoge 415 tests.
+- **Después:**
+  - PR #9: `7172c73` hace que `hora_actual` use la zona de Madrid (`ZoneInfo(ZONA_HORARIA)`), `3f3b2e4` la ajusta al contrato y `bfb6f8f` corrige las claves de la imagen.
+  - PR #14: `03e071f` adapta `tests/test_hora_actual.py` a esa zona horaria.
+- **Estado.** Arreglado.
 
-`src/logging_utils.py` registra cada consulta en dos sitios: una línea legible
-por consola y una línea JSON por consulta en `output/consultas.jsonl`.
+### c) `avisos = None` se leía como "no hay avisos"
+- **Qué pasó.** Si AEMET no devuelve avisos, `api_dominio` deja `avisos = None`, y el LLM lo interpretaba como que no había avisos activos.
+- **Cómo se detectó.** Por observación del equipo. No hay test ni registro en el repositorio que lo reproduzca.
+- **Causa.** Antes del arreglo, `PROMPT_ENTORNO` solo decía "Distingue los datos comprobados de la información no disponible". No explicaba qué significa `None`.
+- **Arreglo.** El commit `1017d75` ("fix: clarify planning specialist prompt") añade al prompt: "Si un campo tiene el valor None, considéralo información no disponible. Nunca interpretes None como ausencia de avisos…". Llegó a `develop` con el PR #16.
+- **Estado.** Arreglado. Hoy el arreglo depende de que el LLM siga la instrucción del prompt, y no hay ningún test que lo compruebe.
+- **Mejora futura:**
+  1. No depender solo del prompt: que el especialista escriba "avisos: no disponible" en su contexto cuando el valor sea `None`.
+  2. Añadir un test con un LLM falso que compruebe ese texto.
+  3. Si se cambia la salida de `api_dominio`, pasarlo antes por `/sdd-cambio` sobre el contrato.
 
-Campos registrados: marca de tiempo, pregunta, `top_k`, número de chunks
-recuperados, tiempo en segundos, modelo de generación, `abstuvo`,
-`motivo_abstencion`, `score` del mejor chunk y fuentes citadas.
+### Limitación conocida: itinerario repetido en el chat
+El itinerario puede aparecer dos veces: el núcleo lo incluye en el texto de `respuesta`, y la interfaz lo pinta otra vez como lista a partir del campo `plan`. No incumple ningún requisito, pero se ve repetido. Está registrado en `specs/005-streamlit-agente/validacion.md`.
 
-Se eligió el formato JSONL porque permite añadir líneas sin releer el fichero y
-se carga en una instrucción:
-
-    pandas.read_json("output/consultas.jsonl", lines=True)
-
-El registro está conectado dentro de `responder()`, de modo que queda constancia
-tanto de las consultas hechas desde la CLI como desde Streamlit. Un fallo de
-escritura no interrumpe la consulta: se avisa y se continúa, porque un problema
-de registro no debe dejar sin respuesta al usuario.
-
-`resumen_de_consultas()` devuelve el total de consultas, el número de
-abstenciones, la tasa de abstención y el tiempo medio.
-
-### Métricas de la sesión de evaluación
-
-Medición sobre una sesión limpia de 10 consultas reales contra el índice
-completo, con `gemini-3.6-flash` y `top_k = 3`.
-
-| Métrica | Valor |
-|---|---|
-| Consultas registradas | 10 |
-| Abstenciones | 3 |
-| Tasa de abstención | 30 % |
-| Tiempo medio por consulta | 14,8 s |
-
-La tasa de abstención del 30 % corresponde a la composición de la sesión: se
-incluyeron a propósito preguntas sin cobertura en el corpus (el estilo
-neomudéjar, el evento deportivo y el aparcamiento) para comprobar el
-comportamiento en ambos casos.
-
-**El tiempo medio de 14,8 segundos es el principal límite de rendimiento del
-sistema.** El grueso corresponde a la generación: el retrieval sobre ChromaDB es
-prácticamente instantáneo y la llamada al modelo consume casi todo el tiempo. Es
-aceptable para una consulta puntual, pero se hace largo en una demostración en
-vivo. Dos mejoras evidentes, fuera del alcance del MVP: devolver la respuesta en
-streaming, para que el usuario empiece a leer antes de que termine de generarse,
-y cachear las consultas repetidas.
-
-### Un fallo detectado al recoger estas métricas
-
-La primera medición dio 314 consultas con un tiempo medio de 0,465 segundos,
-cifras imposibles para consultas reales. La causa era que la suite de tests
-también escribía en el registro: cada ejecución de `pytest` añadía cientos de
-entradas generadas con clientes simulados, porque las pruebas llaman a
-`responder()` y este registra siempre.
-
-Se añadió `tests/conftest.py` con una fixture automática que redirige
-`RUTA_LOG` a un fichero temporal en todas las pruebas, y las métricas se
-tomaron después en una sesión limpia.
-
-El caso ilustra un riesgo propio del logging automático: si el registro no se
-aísla en las pruebas, las métricas derivadas de él dejan de ser fiables sin que
-nada falle de forma visible. Ningún test estaba en rojo y el sistema funcionaba
-con normalidad; lo único incorrecto eran los números.
-
-## 9. Decisiones técnicas
-
-- Modelo de embeddings: `gemini-embedding-001`, dimensión 3.072. Se migró desde
-  `text-embedding-004`, retirado por Google en enero de 2026.
-- Modelo de generación: `gemini-3.6-flash`. Se migró desde `gemini-2.5-flash`,
-  que Google dejó de servir a cuentas nuevas durante el desarrollo. El cambio
-  afecta solo a `LLM_MODEL` y no obliga a reconstruir el índice.
-- ChromaDB y ruta persistente: colección `retiro_madrid` en `chroma/`, con
-  métrica coseno. La carpeta no se versiona, de modo que cada entorno construye
-  su propio índice.
-- Estrategia de regeneración: `build_index(recreate=True)` reconstruye la
-  colección desde cero; `--keep-index` hace upsert sobre la existente. La
-  idempotencia se verifica en los tests del bloque B.
-- API interna: `responder(pregunta, top_k, score_minimo, collection, client,
-  where)` devuelve `respuesta`, `fuentes`, `citas`, `chunks`, `abstuvo` y
-  `motivo_abstencion`. `rag_ask()` es una envoltura que devuelve solo el texto.
-- Inyección de dependencias: `retrieve()` y `responder()` aceptan `collection` y
-  `client` opcionales, lo que permite probar todo el bloque C sin ChromaDB ni la
-  API de Gemini, con dobles deterministas.
-- Parámetros configurables por `.env`: `TOP_K`, `RAG_SCORE_MINIMO` y
-  `RAG_LOG_FILE`, además de los modelos. El umbral también se puede sobrescribir
-  desde la CLI con `--score-minimo`.
-- Interfaz de línea de comandos: `--index` construye el índice (con `--dry-run`
-  valida sin consumir API), `--query` ejecuta solo retrieval y `--ask` el flujo
-  completo, con `--top-k`, `--category`, `--contexto`, `--score-minimo` y
-  `--json`.
-- Limitación conocida del SDK: `google-genai` 2.22.0 emite un aviso sobre
-  *automatic function calling* en `generate_content()` aunque no se pasen
-  herramientas. Es un fallo abierto del SDK
-  (`googleapis/python-genai#2902`) que no afecta a las respuestas. Se decidió no
-  migrar a la Chat API por su impacto en el alcance de la entrega.
-
----
-
-## 10. Siguientes pasos
-
-Mejoras razonables, fuera del alcance del MVP entregado:
-
-- **Reranking.** Un modelo de reordenación sobre los `top_k` chunks recuperados
-  mejoraría la precisión sin ampliar el contexto enviado al LLM. Es la medida
-  con más recorrido, dado que los scores de embeddings apenas discriminan.
-- **Equilibrado del corpus.** Limitar la proporción de chunks por documento
-  evitaría que una fuente muy extensa domine el espacio vectorial.
-- **Enrutado por categoría.** Clasificar la pregunta y aplicar el filtro `where`
-  automáticamente, en lugar de buscar en todo el corpus.
-- **Descomposición de consultas.** Dividir las preguntas con varias entidades en
-  varias búsquedas.
-- **Recalibración automática del umbral.** Cada vez que el corpus crece, la
-  distribución de scores cambia; convendría reejecutar la calibración como parte
-  del proceso de indexación.
-- **Métricas de grounding automáticas.** Hoy la verificación de que la respuesta
-  se apoya en el contexto es manual. Podría automatizarse comprobando que cada
-  cita `[n]` apunta a un chunk efectivamente recuperado, usando el campo
-  `citas`.
-
----
-
-# Los dos huecos que faltan
-
-Están en el apartado 8. Para rellenarlos:
-
-1. Haz unas cuantas consultas para tener datos, por ejemplo:
-
-       python main.py --ask "¿Qué horario tiene el parque en verano?"
-       python main.py --ask "¿Qué monumento preside el Estanque Grande?"
-       python main.py --ask "¿Qué edificio es neomudéjar?"
-
-2. Pide el resumen:
-
-       python -c "import sys; sys.path.insert(0,'.'); from src.logging_utils import resumen_de_consultas; print(resumen_de_consultas())"
-
-3. Copia los cuatro números en el apartado 8.
+## Cómo se trabajó (SDD)
+- Toda funcionalidad pasó por spec, plan, tareas, implementación y validación (`docs/constitution.md`, `AGENTS.md`).
+- Cada fase se aprobaba antes de pasar a la siguiente.
+- Specs del agente: `specs/003-nucleo-agente`, `specs/004-cli-hitl` y `specs/005-streamlit-agente`.
+- El contrato entre bloques (`docs/contrato.md`) se fijó antes de programar. Cualquier cambio se hace primero en el contrato.
+- En implementación: una tarea cada vez y los tests primero. Ningún test llama a Gemini, a AEMET ni a la red: se usan dobles, un LLM falso y `MemorySaver`.
+- Hubo una rama por bloque, con PR a `develop`: núcleo (Mihaela), tools (Guillermo), e interfaz y contrato (Adixon).
+- Al cierre de este informe, `pytest` da 507 passed en la rama `docs/readme-informe`.
+- La interfaz tiene una validación RF por RF (`specs/005-streamlit-agente/validacion.md`), con veredicto "Sí".
