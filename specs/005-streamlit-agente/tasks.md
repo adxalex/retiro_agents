@@ -62,15 +62,15 @@
       Hecho cuando: `AGENTS.md` incluye las dos filas y el comando, y `pytest` sale en verde.
 
 ## Bloque 3 — Tests de la app con AppTest
-- [ ] T16. Crear en `tests/test_app_agent.py` el fixture con `AppTest.from_file("app_agent.py")` y dobles de `src.agent.procesar_turno` y `src.agent.aprobar_plan` con `monkeypatch`, que cuentan llamadas. Añadir los tests de arranque y chat. (RF-1, RF-2, RF-5, RF-32, RF-38)
+- [x] T16. Crear en `tests/test_app_agent.py` el fixture con `AppTest.from_file("app_agent.py")` y dobles de `src.agent.procesar_turno` y `src.agent.aprobar_plan` con `monkeypatch`, que cuentan llamadas. Añadir los tests de arranque y chat. (RF-1, RF-2, RF-5, RF-32, RF-38)
       Hecho cuando: en verde `test_app_arranca_con_thread_id` y `test_app_chat_y_respuesta`.
-- [ ] T17. Añadir los tests de plan pendiente: caja de chat desactivada, aviso visible, botones habilitados solo con plan y ninguna llamada a `aprobar_plan` sin pulsar un botón. (RF-17, RF-18, RF-19, RF-20, RF-28)
+- [x] T17. Añadir los tests de plan pendiente: caja de chat desactivada, aviso visible, botones habilitados solo con plan y ninguna llamada a `aprobar_plan` sin pulsar un botón. (RF-17, RF-18, RF-19, RF-20, RF-28)
       Hecho cuando: en verde `test_app_plan_pendiente_bloquea_chat_y_avisa`, `test_app_botones_habilitados_solo_con_plan` y `test_app_sin_aprobacion_automatica`.
-- [ ] T18. Añadir los tests de decisión desde la sidebar: Aprobar y Rechazar llaman al doble con el comentario escrito, muestran el mensaje del sistema y reactivan el chat. (RF-21, RF-22, RF-23, RF-24, RF-26)
+- [x] T18. Añadir los tests de decisión desde la sidebar: Aprobar y Rechazar llaman al doble con el comentario escrito, muestran el mensaje del sistema y reactivan el chat. (RF-21, RF-22, RF-23, RF-24, RF-26)
       Hecho cuando: en verde `test_app_aprobar_desde_sidebar` y `test_app_rechazar_desde_sidebar`.
-- [ ] T19. Añadir los tests de "Nueva conversación" (visible, habilitado y cambia el `thread_id`) y del expander de depuración (existe y muestra `pendiente_aprobacion` y `done`). (RF-31, RF-33, RF-40, RF-41)
+- [x] T19. Añadir los tests de "Nueva conversación" (visible, habilitado y cambia el `thread_id`) y del expander de depuración (existe y muestra `pendiente_aprobacion` y `done`). (RF-31, RF-33, RF-40, RF-41)
       Hecho cuando: en verde `test_app_nueva_conversacion_siempre_visible` y `test_app_expander_depuracion`.
 ## Validación
-- [ ] T20. Validación final RF por RF (`/sdd-validar`), con las comprobaciones manuales de RF-4, RF-9, RF-11, RF-13 y RF-31 y la demo de los criterios de finalización. (Todos)
+- [x] T20. Validación final RF por RF (`/sdd-validar`), con las comprobaciones manuales de RF-4, RF-9, RF-11, RF-13 y RF-31 y la demo de los criterios de finalización. (Todos)
       Hecho cuando: `validacion.md` con veredicto "Sí".
       Evidencia ya conseguida (25/10): comprobación manual de T8 superada con una prueba real con Gemini en `streamlit run app_agent.py`. Se generó un plan, el chat quedó bloqueado mientras estaba pendiente y se aprobó y rechazó con comentario.
