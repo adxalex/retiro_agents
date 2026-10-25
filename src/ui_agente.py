@@ -2,6 +2,8 @@
 import uuid
 from typing import Callable
 
+import config
+
 ROL_USUARIO = "usuario"
 ROL_AGENTE = "agente"
 ROL_AVISO = "aviso"
@@ -15,7 +17,21 @@ AVISO_PLAN_PENDIENTE = "Hay un plan pendiente: apruébalo o recházalo para cont
 MENSAJE_PLAN_APROBADO = "Plan aprobado"
 MENSAJE_PLAN_RECHAZADO = "Plan rechazado, puedes hacer otra petición"
 
+AVISO_IMAGEN_FORMATO = (
+    "Formato de imagen no admitido: solo PNG o JPG. El mensaje no se ha enviado."
+)
+AVISO_IMAGEN_TAMANO = (
+    f"La imagen supera {config.IMAGEN_MAX_BYTES // (1024 * 1024)} MB. "
+    "El mensaje no se ha enviado."
+)
+
 CAMPOS_TRAZA = ("ts", "origen", "nombre", "status", "preview")
+
+# Primeros bytes que identifican cada formato admitido.
+FIRMAS_IMAGEN = {
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/jpeg": b"\xff\xd8\xff",
+}
 
 
 def nueva_sesion() -> dict:
@@ -78,6 +94,24 @@ def pendiente(sesion: dict) -> bool:
     return bool(ultimo and ultimo.get("pendiente_aprobacion"))
 
 
+def validar_imagen(
+    mime: str | None, datos: bytes | None
+) -> tuple[dict | None, str | None]:
+    """Comprueba formato y tamaño de la imagen adjunta.
+
+    Devuelve (imagen, aviso): la imagen en el formato del contrato si es
+    válida, o None y el aviso que se muestra si no lo es.
+    """
+    if datos is None:
+        return None, None
+    firma = FIRMAS_IMAGEN.get(mime) if mime in config.IMAGEN_MIME_PERMITIDOS else None
+    if firma is None or not datos.startswith(firma):
+        return None, AVISO_IMAGEN_FORMATO
+    if len(datos) > config.IMAGEN_MAX_BYTES:
+        return None, AVISO_IMAGEN_TAMANO
+    return {"bytes": datos, "mime": mime}, None
+
+
 def filas_traza(traza: list) -> list[dict]:
     """Reduce cada evento de traza a los campos que muestra el panel."""
     return [
@@ -123,11 +157,19 @@ def enviar_turno(
     if not texto:
         return
 
+    imagen, aviso = validar_imagen(mime, datos)
+    if aviso:
+        _anadir(sesion, ROL_AVISO, aviso)
+        return
+
     _anadir(sesion, ROL_USUARIO, texto)
     resultado = llamar_seguro(
-        procesar, texto, sesion["thread_id"], None,
+        procesar, texto, sesion["thread_id"], imagen,
         pendiente_previo=pendiente(sesion))
     registrar(sesion, resultado)
+    if imagen:
+        # Una clave nueva vacía el selector: la imagen no se reenvía.
+        sesion["uploader_key"] += 1
 
     respuesta = resultado["respuesta"] or ""
     plan = resultado["plan"] or []

@@ -470,6 +470,117 @@ def test_estado_depuracion(sesion, procesar_falso):
     assert estado["comentario"] is None
 
 
+FIRMA_PNG = b"\x89PNG\r\n\x1a\n"
+FIRMA_JPEG = b"\xff\xd8\xff"
+
+
+def bytes_imagen(firma: bytes, total: int = 64) -> bytes:
+    """Bytes mínimos con la firma indicada y el tamaño total pedido."""
+    return firma + b"0" * (total - len(firma))
+
+
+@pytest.mark.parametrize("mime, firma", [
+    ("image/png", FIRMA_PNG),
+    ("image/jpeg", FIRMA_JPEG),
+])
+def test_validar_imagen_acepta_png_y_jpg(mime, firma):
+    datos = bytes_imagen(firma)
+
+    imagen, aviso = ui_agente.validar_imagen(mime, datos)
+
+    assert imagen == {"bytes": datos, "mime": mime}
+    assert aviso is None
+
+
+def test_validar_imagen_sin_adjunto():
+    assert ui_agente.validar_imagen(None, None) == (None, None)
+
+
+@pytest.mark.parametrize("mime, datos", [
+    ("image/gif", b"GIF89a" + b"0" * 32),
+    ("image/webp", b"RIFF0000WEBP" + b"0" * 32),
+    (None, bytes_imagen(FIRMA_PNG)),
+])
+def test_validar_imagen_formato_no_admitido(mime, datos):
+    imagen, aviso = ui_agente.validar_imagen(mime, datos)
+
+    assert imagen is None
+    assert aviso == ui_agente.AVISO_IMAGEN_FORMATO
+
+
+@pytest.mark.parametrize("mime, datos", [
+    ("image/png", bytes_imagen(FIRMA_JPEG)),
+    ("image/png", b"GIF89a" + b"0" * 32),
+    ("image/jpeg", b"esto no es una imagen"),
+    ("image/png", b""),
+])
+def test_validar_imagen_mime_falseado(mime, datos):
+    imagen, aviso = ui_agente.validar_imagen(mime, datos)
+
+    assert imagen is None
+    assert aviso == ui_agente.AVISO_IMAGEN_FORMATO
+
+
+def test_validar_imagen_supera_limite():
+    datos = bytes_imagen(FIRMA_PNG, config.IMAGEN_MAX_BYTES + 1)
+
+    imagen, aviso = ui_agente.validar_imagen("image/png", datos)
+
+    assert imagen is None
+    assert aviso == ui_agente.AVISO_IMAGEN_TAMANO
+
+
+def test_validar_imagen_en_limite_exacto():
+    datos = bytes_imagen(FIRMA_JPEG, config.IMAGEN_MAX_BYTES)
+
+    imagen, aviso = ui_agente.validar_imagen("image/jpeg", datos)
+
+    assert imagen == {"bytes": datos, "mime": "image/jpeg"}
+    assert aviso is None
+
+
+@pytest.mark.parametrize("mime, datos, aviso", [
+    ("image/gif", b"GIF89a" + b"0" * 32, "AVISO_IMAGEN_FORMATO"),
+    ("image/png", bytes_imagen(FIRMA_PNG, config.IMAGEN_MAX_BYTES + 1),
+     "AVISO_IMAGEN_TAMANO"),
+], ids=["formato", "tamano"])
+def test_imagen_invalida_no_envia_mensaje(sesion, procesar_falso, mime, datos, aviso):
+    ui_agente.enviar_turno(sesion, "Mira esta foto", mime, datos, procesar_falso)
+
+    assert procesar_falso.llamadas == []
+    assert [(m["rol"], m["texto"]) for m in sesion["mensajes"]] == [
+        (ui_agente.ROL_AVISO, getattr(ui_agente, aviso))]
+    assert sesion["ultimo"] is None
+    assert sesion["uploader_key"] == 0
+
+
+def test_imagen_se_pasa_en_formato_contrato(sesion, procesar_falso):
+    datos = bytes_imagen(FIRMA_PNG)
+    procesar_falso.respuestas = [{"respuesta": "Veo el estanque."}]
+
+    ui_agente.enviar_turno(sesion, "¿Qué es esto?", "image/png", datos, procesar_falso)
+
+    imagen = procesar_falso.llamadas[0]["imagen"]
+    assert imagen == {"bytes": datos, "mime": "image/png"}
+    assert set(imagen) == {"bytes", "mime"}
+    # La UI no describe la imagen: solo el usuario y la respuesta del agente.
+    assert [(m["rol"], m["texto"]) for m in sesion["mensajes"]] == [
+        (ui_agente.ROL_USUARIO, "¿Qué es esto?"),
+        (ui_agente.ROL_AGENTE, "Veo el estanque."),
+    ]
+
+
+def test_imagen_se_descarta_tras_envio(sesion, procesar_falso):
+    datos = bytes_imagen(FIRMA_JPEG)
+
+    ui_agente.enviar_turno(sesion, "Con foto", "image/jpeg", datos, procesar_falso)
+    assert sesion["uploader_key"] == 1
+
+    ui_agente.enviar_turno(sesion, "Sin foto", None, None, procesar_falso)
+    assert sesion["uploader_key"] == 1
+    assert procesar_falso.llamadas[1]["imagen"] is None
+
+
 def test_decision_usa_mismo_thread_id(sesion_con_plan, procesar_falso, aprobar_falso):
     ui_agente.decidir(sesion_con_plan, False, "", aprobar_falso)
 
