@@ -49,7 +49,12 @@ Una decisión discutible: si la imagen no es válida, la tool describe una image
 - `tests/test_aemet_api.py`: `test_api_dominio_returns_aemet_data`, `test_api_dominio_uses_fallback_when_observations_fail`, `test_api_dominio_keeps_observations_if_forecast_or_alerts_fail` y `test_api_dominio_reports_fallback_failure`.
 - `tests/test_rag_tool.py`, `tests/test_hora_actual.py` y `tests/test_image_decrip.py`: cubren cada tool por separado.
 
-**Hueco conocido.** No hay tests de `ejecutar_tool` ni de `args_validation`. Ni la allowlist, ni el estado `blocked`, ni la captura de excepciones tienen test; solo los respalda el código.
+**Evidencia automática del registro** (`tests/test_init.py`, PR #15):
+- Allowlist: `test_ejecutar_tool_blocks_unknown_tool`.
+- Salida homogénea: `test_ejecutar_tool_returns_success_and_trace`, `test_ejecutar_tool_returns_error_when_tool_reports_error` y `test_ejecutar_tool_catches_exception_from_validation_or_tool`.
+- Validación de la respuesta de la tool: `test_ejecutar_tool_rejects_non_dict_response` y `test_ejecutar_tool_rejects_response_missing_required_fields`.
+- Vista previa de la traza: `test_ejecutar_tool_limits_trace_preview_to_200_characters`.
+- Validación de argumentos: `test_args_validation_rejects_non_dict_args`, `test_args_validation_rag_ask_strips_question`, `test_args_validation_unknown_tool_raises_value_error` y `test_args_validation_image_falls_back_when_image_is_invalid`.
 
 ## 3. HITL: aprobar y rechazar
 
@@ -120,7 +125,7 @@ El rechazo corresponde a la segunda petición de la misma conversación. Las dos
   - En el supervisor, `.content.strip()` lanzaba una excepción, que se capturaba, y se pasaba al fallback.
   - Como todo se capturaba, no aparecía ningún error.
 - **Arreglo.** Commit `c00f7fd` ("fix: handle Gemini text blocks in graph"): lee primero `.text`, recurre a `.content` si hace falta y, si sigue sin haber texto, usa el fallback. Entró en `develop` con los PR #10 y #11; el commit está en los dos.
-- **Tests.** `test_generar_nota_especialista_acepta_bloques_de_texto` y `test_seleccionar_ruta_acepta_bloques_de_texto` en `tests/test_graph.py`. Observación: `test_seleccionar_ruta_acepta_bloques_de_texto` está definido dos veces en ese archivo (líneas 14 y 206). Python se queda con el segundo y el primero nunca se ejecuta.
+- **Tests.** `test_generar_nota_especialista_acepta_bloques_de_texto` y `test_seleccionar_ruta_acepta_bloques_de_texto` en `tests/test_graph.py`.
 - **Estado.** Arreglado.
 
 ### b) Las tools fallaban al integrarse
@@ -139,14 +144,13 @@ El rechazo corresponde a la segunda petición de la misma conversación. Las dos
 ### c) `avisos = None` se leía como "no hay avisos"
 - **Qué pasó.** Si AEMET no devuelve avisos, `api_dominio` deja `avisos = None`, y el LLM lo interpretaba como que no había avisos activos.
 - **Cómo se detectó.** Por observación del equipo. No hay test ni registro en el repositorio que lo reproduzca.
-- **Causa.** En esta rama, `PROMPT_ENTORNO` solo dice "Distingue los datos comprobados de la información no disponible". No explica qué significa `None`.
-- **Arreglo.** El commit `1017d75` ("fix: clarify planning specialist prompt") añade al prompt: "Si un campo tiene el valor None, considéralo información no disponible. Nunca interpretes None como ausencia de avisos…". Ese commit solo está en `origin/feature/nucleo_agente`, según las referencias locales: no está en `develop` ni en esta rama.
-- **Estado.** Conocido, pendiente de merge.
-- **Propuesta:**
-  1. Integrar `1017d75` mediante un PR a `develop`.
-  2. No depender solo del prompt: que el especialista escriba "avisos: no disponible" en su contexto cuando el valor sea `None`.
-  3. Añadir un test con un LLM falso que compruebe ese texto.
-  4. Si se cambia la salida de `api_dominio`, pasarlo antes por `/sdd-cambio` sobre el contrato.
+- **Causa.** Antes del arreglo, `PROMPT_ENTORNO` solo decía "Distingue los datos comprobados de la información no disponible". No explicaba qué significa `None`.
+- **Arreglo.** El commit `1017d75` ("fix: clarify planning specialist prompt") añade al prompt: "Si un campo tiene el valor None, considéralo información no disponible. Nunca interpretes None como ausencia de avisos…". Llegó a `develop` con el PR #16.
+- **Estado.** Arreglado. Hoy el arreglo depende de que el LLM siga la instrucción del prompt, y no hay ningún test que lo compruebe.
+- **Mejora futura:**
+  1. No depender solo del prompt: que el especialista escriba "avisos: no disponible" en su contexto cuando el valor sea `None`.
+  2. Añadir un test con un LLM falso que compruebe ese texto.
+  3. Si se cambia la salida de `api_dominio`, pasarlo antes por `/sdd-cambio` sobre el contrato.
 
 ### Limitación conocida: itinerario repetido en el chat
 El itinerario puede aparecer dos veces: el núcleo lo incluye en el texto de `respuesta`, y la interfaz lo pinta otra vez como lista a partir del campo `plan`. No incumple ningún requisito, pero se ve repetido. Está registrado en `specs/005-streamlit-agente/validacion.md`.
@@ -158,5 +162,5 @@ El itinerario puede aparecer dos veces: el núcleo lo incluye en el texto de `re
 - El contrato entre bloques (`docs/contrato.md`) se fijó antes de programar. Cualquier cambio se hace primero en el contrato.
 - En implementación: una tarea cada vez y los tests primero. Ningún test llama a Gemini, a AEMET ni a la red: se usan dobles, un LLM falso y `MemorySaver`.
 - Hubo una rama por bloque, con PR a `develop`: núcleo (Mihaela), tools (Guillermo), e interfaz y contrato (Adixon).
-- Al cierre de este informe, `pytest` da 484 passed en la rama `docs/readme-informe`.
+- Al cierre de este informe, `pytest` da 507 passed en la rama `docs/readme-informe`.
 - La interfaz tiene una validación RF por RF (`specs/005-streamlit-agente/validacion.md`), con veredicto "Sí".
