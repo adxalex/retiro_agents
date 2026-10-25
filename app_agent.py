@@ -1,6 +1,7 @@
 """Streamlit del agente: chat, aprobación del plan y panel de depuración."""
 import streamlit as st
 
+import config
 from src import agent
 from src import ui_agente
 
@@ -108,7 +109,7 @@ def _adjunto(sesion: dict) -> tuple[str | None, bytes | None]:
     if aviso:
         st.warning(aviso)
     else:
-        st.image(imagen["bytes"], width=120)
+        st.image(imagen["bytes"], width=config.IMAGEN_ANCHO_MINIATURA)
     return mime, datos
 
 

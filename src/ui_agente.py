@@ -27,18 +27,7 @@ AVISO_IMAGEN_TAMANO = (
     "El mensaje no se ha enviado."
 )
 
-CAMPOS_TRAZA = ("ts", "origen", "nombre", "status", "preview")
-
-# Secretos que nunca deben llegar a la pantalla.
-MASCARA = "***"
-VARIABLES_SECRETAS = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "AEMET_API_KEY")
 PATRON_CLAVE_GOOGLE = re.compile(r"AIza[0-9A-Za-z_-]{35}")
-
-# Primeros bytes que identifican cada formato admitido.
-FIRMAS_IMAGEN = {
-    "image/png": b"\x89PNG\r\n\x1a\n",
-    "image/jpeg": b"\xff\xd8\xff",
-}
 
 
 def nueva_sesion(ids_previos=()) -> dict:
@@ -97,11 +86,11 @@ def ocultar_secretos(texto):
     """Enmascara claves de API conocidas; lo que no es texto se devuelve igual."""
     if not isinstance(texto, str):
         return texto
-    for variable in VARIABLES_SECRETAS:
+    for variable in config.VARIABLES_SECRETAS:
         valor = os.environ.get(variable)
         if valor:
-            texto = texto.replace(valor, MASCARA)
-    return PATRON_CLAVE_GOOGLE.sub(MASCARA, texto)
+            texto = texto.replace(valor, config.MASCARA)
+    return PATRON_CLAVE_GOOGLE.sub(config.MASCARA, texto)
 
 
 def _evento_sin_secretos(evento: dict) -> dict:
@@ -145,7 +134,8 @@ def validar_imagen(
     """
     if datos is None:
         return None, None
-    firma = FIRMAS_IMAGEN.get(mime) if mime in config.IMAGEN_MIME_PERMITIDOS else None
+    firma = (config.FIRMAS_IMAGEN.get(mime)
+             if mime in config.IMAGEN_MIME_PERMITIDOS else None)
     if firma is None or not datos.startswith(firma):
         return None, AVISO_IMAGEN_FORMATO
     if len(datos) > config.IMAGEN_MAX_BYTES:
@@ -156,7 +146,7 @@ def validar_imagen(
 def filas_traza(traza: list) -> list[dict]:
     """Reduce cada evento de traza a los campos que muestra el panel."""
     return [
-        {campo: evento.get(campo) or "" for campo in CAMPOS_TRAZA}
+        {campo: evento.get(campo) or "" for campo in config.CAMPOS_TRAZA}
         for evento in traza or []
     ]
 

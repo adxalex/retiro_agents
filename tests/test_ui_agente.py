@@ -601,7 +601,7 @@ def test_ocultar_secretos_valores_de_entorno(entorno_secretos):
     oculto = ui_agente.ocultar_secretos(texto)
 
     assert CLAVE_GEMINI not in oculto and CLAVE_AEMET not in oculto
-    assert oculto == f"Fallo con {ui_agente.MASCARA} y {ui_agente.MASCARA}."
+    assert oculto == f"Fallo con {config.MASCARA} y {config.MASCARA}."
 
 
 def test_ocultar_secretos_patron_google(entorno_secretos):
@@ -609,7 +609,7 @@ def test_ocultar_secretos_patron_google(entorno_secretos):
 
     oculto = ui_agente.ocultar_secretos(f"key={CLAVE_GOOGLE} y {corta}")
 
-    assert oculto == f"key={ui_agente.MASCARA} y {corta}"
+    assert oculto == f"key={config.MASCARA} y {corta}"
 
 
 def test_ocultar_secretos_en_error_preview_y_respuesta(
@@ -626,11 +626,11 @@ def test_ocultar_secretos_en_error_preview_y_respuesta(
     ui_agente.enviar_turno(sesion, "Plan", None, None, procesar_falso)
 
     ultimo = sesion["ultimo"]
-    assert ultimo["respuesta"] == f"Respuesta con {ui_agente.MASCARA}"
-    assert ultimo["plan"] == [f"Paso con {ui_agente.MASCARA}"]
-    assert ultimo["error"] == f"Error con {ui_agente.MASCARA}"
-    assert ultimo["traza"][0]["preview"] == f"preview {ui_agente.MASCARA}"
-    assert ultimo["traza"][0]["args"]["comentario"] == ui_agente.MASCARA
+    assert ultimo["respuesta"] == f"Respuesta con {config.MASCARA}"
+    assert ultimo["plan"] == [f"Paso con {config.MASCARA}"]
+    assert ultimo["error"] == f"Error con {config.MASCARA}"
+    assert ultimo["traza"][0]["preview"] == f"preview {config.MASCARA}"
+    assert ultimo["traza"][0]["args"]["comentario"] == config.MASCARA
     # Lo que se pinta en el chat sale ya enmascarado.
     visible = str(sesion["mensajes"]) + str(ui_agente.estado_depuracion(sesion))
     for clave in (CLAVE_GEMINI, CLAVE_AEMET, CLAVE_GOOGLE):
@@ -642,7 +642,7 @@ def test_ocultar_secretos_en_error_preview_y_respuesta(
     ui_agente.decidir(sesion, False, "", aprobar_falso)
 
     assert ui_agente.estado_depuracion(sesion)["comentario"] == (
-        f"ojo {ui_agente.MASCARA}")
+        f"ojo {config.MASCARA}")
 
 
 def test_nueva_conversacion_genera_id_distinto(monkeypatch):
