@@ -44,7 +44,7 @@ Devuelve: {"tool": nombre, "status": "ok" | "error" | "blocked", "data": ..., "e
 Tools:
 - rag_ask: args {"pregunta": str}. Llama a responder(), no a la función rag_ask() del RAG, para conservar fuentes y citas. data = {respuesta, fuentes, citas, abstuvo, motivo_abstencion}.
 - api_dominio: args {}. data = {"observaciones": dict | None, "previsiones": dict | None, "avisos": dict | None, "origen": "aemet" | "respaldo"}. None significa "no disponible", no "no hay": un aviso None no quiere decir que no haya avisos.
-- hora_actual: args {}. data = str con la fecha y hora de Madrid en ISO 8601 (por ejemplo, 2026-10-25T12:26:11).
+- hora_actual: args {}. data = {"hora_madrid": "HH:MM", "estado_parque": "Abierto" | "Cerrado"}. La hora es la de Madrid.
 - describir_imagen: args {"imagen": {"bytes": bytes, "mime": "image/png" | "image/jpeg"}}. data = str (descripción). Si el argumento no es válido, la tool usa la imagen de demo.
 
 
